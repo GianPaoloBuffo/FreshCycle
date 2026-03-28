@@ -27,6 +27,9 @@ app/ios/
 # Go
 bin/
 coverage.out
+.go/
+.go-cache/
+.go-mod-cache/
 
 # logs
 npm-debug.log*
