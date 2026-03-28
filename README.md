@@ -8,7 +8,6 @@ The current implementation addresses `GP-9` by establishing the Expo app in [`/a
 
 This is intentionally not implemented yet:
 
-- Supabase schema and migrations in `/supabase`
 - email/password auth flow
 - monorepo bootstrap commands and orchestration
 
@@ -16,7 +15,7 @@ This is intentionally not implemented yet:
 
 - [`app`](/Users/gp-macbook/Projects/FreshCycle/app): Expo mobile app scaffold
 - [`api`](/Users/gp-macbook/Projects/FreshCycle/api): Go API scaffold with `chi`, config wiring, and `/health`
-- [`supabase`](/Users/gp-macbook/Projects/FreshCycle/supabase): reserved for migrations, seed data, and local config
+- [`supabase`](/Users/gp-macbook/Projects/FreshCycle/supabase): foundational schema and migrations for garments and laundry schedules
 - [`docs`](/Users/gp-macbook/Projects/FreshCycle/docs): optional product and setup docs as the project grows
 
 ## Getting started
@@ -27,10 +26,10 @@ This is intentionally not implemented yet:
 4. Start the app with `npm run start`.
 5. Use `npm run typecheck` to validate the TypeScript scaffold.
 6. Move into [`api`](/Users/gp-macbook/Projects/FreshCycle/api) and run `go test ./...` to verify the API scaffold.
+7. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) before wiring local Supabase.
 
 ## Next Phase 1 steps
 
-- define the first Supabase schema and migration flow
 - wire a Supabase client into the Expo app
 - implement the initial auth state and route protection
 - add root-level bootstrap commands for new-machine setup
