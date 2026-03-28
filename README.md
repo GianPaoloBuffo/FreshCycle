@@ -4,16 +4,15 @@ FreshCycle is a mobile-first laundry companion for capturing garment care inform
 
 ## Phase 1 scope
 
-The current implementation addresses `GP-9` by establishing the Expo app in [`/app`](/Users/gp-macbook/Projects/FreshCycle/app) with TypeScript, Expo Router, shared screen primitives, and environment accessors.
+The current implementation establishes the Phase 1 app, API, and schema foundation: the Expo app in [`/app`](/Users/gp-macbook/Projects/FreshCycle/app), the Go API scaffold in [`/api`](/Users/gp-macbook/Projects/FreshCycle/api), and the first Supabase migration set in [`/supabase`](/Users/gp-macbook/Projects/FreshCycle/supabase).
 
 This is intentionally not implemented yet:
 
-- email/password auth flow
 - monorepo bootstrap commands and orchestration
 
 ## Repository layout
 
-- [`app`](/Users/gp-macbook/Projects/FreshCycle/app): Expo mobile app scaffold
+- [`app`](/Users/gp-macbook/Projects/FreshCycle/app): Expo mobile app scaffold with Supabase email/password auth screens
 - [`api`](/Users/gp-macbook/Projects/FreshCycle/api): Go API scaffold with `chi`, config wiring, and `/health`
 - [`supabase`](/Users/gp-macbook/Projects/FreshCycle/supabase): foundational schema and migrations for garments and laundry schedules
 - [`docs`](/Users/gp-macbook/Projects/FreshCycle/docs): optional product and setup docs as the project grows
@@ -27,9 +26,8 @@ This is intentionally not implemented yet:
 5. Use `npm run typecheck` to validate the TypeScript scaffold.
 6. Move into [`api`](/Users/gp-macbook/Projects/FreshCycle/api) and run `go test ./...` to verify the API scaffold.
 7. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) before wiring local Supabase.
+8. Add real Supabase project values to `.env` so the auth screen can sign users in and up.
 
 ## Next Phase 1 steps
 
-- wire a Supabase client into the Expo app
-- implement the initial auth state and route protection
 - add root-level bootstrap commands for new-machine setup

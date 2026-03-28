@@ -1,13 +1,17 @@
 import { Link } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
+import { useAuth } from '@/hooks/useAuth';
 import { getAppEnv } from '@/lib/env';
 
 const env = getAppEnv();
 
 export function HomeScreen() {
+  const { authReady, loading, session, signOut } = useAuth();
+  const userEmail = session?.user.email ?? null;
+
   return (
     <AppScreen>
       <View style={styles.hero}>
@@ -24,7 +28,7 @@ export function HomeScreen() {
         <Text style={styles.listItem}>Expo Router entrypoints for the app shell</Text>
         <Text style={styles.listItem}>A shared theme file for future screens and components</Text>
         <Text style={styles.listItem}>Environment accessors for API and Supabase wiring</Text>
-        <Text style={styles.listItem}>A placeholder auth route for the upcoming foundation work</Text>
+        <Text style={styles.listItem}>Supabase auth client bootstrap with persisted sessions</Text>
       </View>
 
       <View style={styles.card}>
@@ -36,8 +40,29 @@ export function HomeScreen() {
         </Text>
       </View>
 
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Auth status</Text>
+        {!authReady && (
+          <Text style={styles.meta}>
+            Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to enable auth.
+          </Text>
+        )}
+        {authReady && loading && <Text style={styles.meta}>Checking your session...</Text>}
+        {authReady && !loading && !session && (
+          <Text style={styles.meta}>No active session yet. Use the auth screen to sign in.</Text>
+        )}
+        {authReady && !loading && session && (
+          <>
+            <Text style={styles.meta}>Signed in as {userEmail ?? 'an authenticated user'}.</Text>
+            <Pressable onPress={() => void signOut()} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>Sign out</Text>
+            </Pressable>
+          </>
+        )}
+      </View>
+
       <Link href="/auth" style={styles.link}>
-        Sketch the auth foundation
+        Open auth screens
       </Link>
     </AppScreen>
   );
@@ -95,5 +120,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginTop: 8,
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: palette.accentSoft,
+    borderRadius: 999,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

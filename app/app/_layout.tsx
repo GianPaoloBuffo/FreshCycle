@@ -1,11 +1,13 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
+
+import { AuthProvider } from '@/providers/AuthProvider';
 export { ErrorBoundary } from 'expo-router';
 
 export default function RootLayout() {
   return (
-    <>
+    <AuthProvider>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
@@ -22,8 +24,8 @@ export default function RootLayout() {
           },
         }}>
         <Stack.Screen name="index" options={{ title: 'FreshCycle' }} />
-        <Stack.Screen name="auth" options={{ title: 'Auth Foundation' }} />
+        <Stack.Screen name="auth" options={{ title: 'Sign In or Sign Up' }} />
       </Stack>
-    </>
+    </AuthProvider>
   );
 }
