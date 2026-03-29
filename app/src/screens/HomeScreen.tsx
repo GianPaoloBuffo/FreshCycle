@@ -15,20 +15,20 @@ export function HomeScreen() {
   return (
     <AppScreen>
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>Phase 1 foundation</Text>
-        <Text style={styles.title}>FreshCycle starts with a focused mobile shell.</Text>
+        <Text style={styles.eyebrow}>Phase 2 in progress</Text>
+        <Text style={styles.title}>FreshCycle is ready to start the garment label capture flow.</Text>
         <Text style={styles.body}>
-          This scaffold sets up Expo Router, TypeScript, shared styling primitives, and config
-          seams for the API and Supabase work that follows in GP-8.
+          The mobile shell now includes the first add-garment capture slice so we can take or
+          upload care-label photos before the parser and save flow land.
         </Text>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>What is ready now</Text>
-        <Text style={styles.listItem}>Expo Router entrypoints for the app shell</Text>
-        <Text style={styles.listItem}>A shared theme file for future screens and components</Text>
-        <Text style={styles.listItem}>Environment accessors for API and Supabase wiring</Text>
-        <Text style={styles.listItem}>Supabase auth client bootstrap with persisted sessions</Text>
+        <Text style={styles.listItem}>Camera and photo library entry points for care-label capture</Text>
+        <Text style={styles.listItem}>A processing state and preview surface for parsing feedback</Text>
+        <Text style={styles.listItem}>Instrumentation hooks for selection and parsing events</Text>
+        <Text style={styles.listItem}>Supabase-backed auth state to gate the garment flow</Text>
       </View>
 
       <View style={styles.card}>
@@ -61,7 +61,10 @@ export function HomeScreen() {
         )}
       </View>
 
-      <Link href="/auth" style={styles.link}>
+      <Link href={'/add-garment' as never} style={styles.link}>
+        Open add garment flow
+      </Link>
+      <Link href="/auth" style={styles.linkSecondary}>
         Open auth screens
       </Link>
     </AppScreen>
@@ -120,6 +123,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginTop: 8,
+  },
+  linkSecondary: {
+    color: palette.inkMuted,
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 12,
   },
   secondaryButton: {
     alignItems: 'center',
