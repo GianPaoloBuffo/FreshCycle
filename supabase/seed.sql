@@ -1,0 +1,3 @@
+-- FreshCycle local seed placeholder.
+-- Keep this file checked in so `supabase db reset` has a stable seed target
+-- even before the project needs real sample data.

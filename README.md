@@ -21,6 +21,8 @@ This is intentionally not implemented yet:
 
 FreshCycle now uses the Supabase CLI local stack for development by default.
 
+This repository treats the Supabase CLI as the local orchestration layer for database and supporting services. We are not maintaining a parallel Docker Compose setup for Supabase right now.
+
 1. Install the base tools:
    - Node.js
    - Go
@@ -52,6 +54,14 @@ For a fuller walkthrough, see [docs/local-development.md](/Users/gp-macbook/Proj
 4. In [`api`](/Users/gp-macbook/Projects/FreshCycle/api), run `go run ./cmd/api`.
 5. Use `npm run typecheck` in [`app`](/Users/gp-macbook/Projects/FreshCycle/app) and `go test ./...` in [`api`](/Users/gp-macbook/Projects/FreshCycle/api) to verify the scaffold.
 6. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) and use `supabase db reset` or `supabase db push` when evolving it.
+
+Useful local Supabase lifecycle commands:
+
+- `supabase start`
+- `supabase status`
+- `supabase stop`
+- `supabase db reset`
+- `supabase db push`
 
 ## Environment files
 
