@@ -27,7 +27,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const env = getAppEnv();
-  const authReady = Boolean(env.supabaseUrl && env.supabaseAnonKey);
+  const authReady = Boolean(env.supabaseUrl && env.supabaseKey);
   const [loading, setLoading] = useState(authReady);
   const [session, setSession] = useState<Session | null>(null);
 

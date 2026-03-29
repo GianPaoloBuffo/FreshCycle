@@ -7,7 +7,7 @@ import { getAppEnv } from '@/lib/env';
 
 const env = getAppEnv();
 
-export const supabase = createClient(env.supabaseUrl ?? 'https://placeholder.invalid', env.supabaseAnonKey ?? 'placeholder-key', {
+export const supabase = createClient(env.supabaseUrl ?? 'https://placeholder.invalid', env.supabaseKey ?? 'placeholder-key', {
   auth: {
     ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
     autoRefreshToken: true,

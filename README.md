@@ -14,6 +14,7 @@ This is intentionally not implemented yet:
 
 - [`app`](/Users/gp-macbook/Projects/FreshCycle/app): Expo mobile app scaffold with Supabase email/password auth screens
 - [`api`](/Users/gp-macbook/Projects/FreshCycle/api): Go API scaffold with `chi`, config wiring, and `/health`
+- [`api`](/Users/gp-macbook/Projects/FreshCycle/api): Go API scaffold with `chi`, config wiring, `/health`, and Supabase Postgres startup wiring
 - [`supabase`](/Users/gp-macbook/Projects/FreshCycle/supabase): foundational schema and migrations for garments and laundry schedules
 - [`docs`](/Users/gp-macbook/Projects/FreshCycle/docs): optional product and setup docs as the project grows
 
@@ -26,7 +27,8 @@ This is intentionally not implemented yet:
 5. Use `npm run typecheck` to validate the TypeScript scaffold.
 6. Move into [`api`](/Users/gp-macbook/Projects/FreshCycle/api) and run `go test ./...` to verify the API scaffold.
 7. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) before wiring local Supabase.
-8. Add real Supabase project values to `.env` so the auth screen can sign users in and up.
+8. Add real Supabase project values to `app/.env` so the auth screen can sign users in and up.
+9. Add a real `SUPABASE_DB_URL` to `api/.env` before starting the API.
 
 ## Next Phase 1 steps
 

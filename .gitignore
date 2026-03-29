@@ -11,6 +11,9 @@
 .env
 .env.local
 .env.*.local
+api/.env
+api/.env.local
+api/.env.*.local
 
 # Expo app
 app/node_modules/

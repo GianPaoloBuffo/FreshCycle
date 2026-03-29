@@ -98,7 +98,7 @@ export function AuthScreen() {
 
         {!authReady && (
           <Text style={styles.helpText}>
-            Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to enable auth.
+            Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to enable auth.
           </Text>
         )}
 

@@ -36,7 +36,7 @@ export function HomeScreen() {
         <Text style={styles.meta}>API base URL: {env.apiBaseUrl ?? 'not configured'}</Text>
         <Text style={styles.meta}>Supabase URL: {env.supabaseUrl ?? 'not configured'}</Text>
         <Text style={styles.meta}>
-          Supabase anon key: {env.supabaseAnonKey ? 'configured' : 'not configured'}
+          Supabase key: {env.supabaseKey ? 'configured' : 'not configured'}
         </Text>
       </View>
 
@@ -44,7 +44,7 @@ export function HomeScreen() {
         <Text style={styles.cardTitle}>Auth status</Text>
         {!authReady && (
           <Text style={styles.meta}>
-            Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to enable auth.
+            Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to enable auth.
           </Text>
         )}
         {authReady && loading && <Text style={styles.meta}>Checking your session...</Text>}
