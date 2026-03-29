@@ -1,6 +1,7 @@
 # Local Development
 
 FreshCycle uses the Supabase CLI local stack for day-to-day development.
+At the repo root, use the [Makefile](/Users/gp-macbook/Projects/FreshCycle/Makefile#L1) as the default command surface.
 
 ## Orchestration choice
 
@@ -29,14 +30,13 @@ That keeps local development aligned with Supabase's default workflow and avoids
 From the repository root:
 
 ```bash
-cp app/.env.example app/.env.local
-cp api/.env.example api/.env.local
+make bootstrap
 ```
 
 Then start the local Supabase services:
 
 ```bash
-supabase start
+make supabase-start
 ```
 
 This exposes the default local endpoints:
@@ -49,35 +49,32 @@ This exposes the default local endpoints:
 To confirm the stack is healthy:
 
 ```bash
-supabase status
+make supabase-status
 ```
 
 ## Run the app
 
 ```bash
-cd app
-npm install
-npm run start
+make app
 ```
 
 Useful verification commands:
 
 ```bash
-npm run typecheck
-CI=1 npx expo export --platform web
+make test
+cd app && CI=1 npx expo export --platform web
 ```
 
 ## Run the API
 
 ```bash
-cd api
-go run ./cmd/api
+make api
 ```
 
 Useful verification command:
 
 ```bash
-go test ./...
+make test
 ```
 
 The API loads `api/.env` and `api/.env.local` automatically if present.
@@ -87,7 +84,7 @@ The API loads `api/.env` and `api/.env.local` automatically if present.
 Use local Supabase while developing schema changes:
 
 ```bash
-supabase db reset
+make supabase-reset
 ```
 
 This recreates the local database and reapplies all checked-in migrations and seeds.
@@ -105,26 +102,26 @@ The Supabase CLI stores local service state in Docker-managed volumes, so normal
 Use these commands intentionally:
 
 ```bash
-supabase stop
-supabase start
-supabase status
-supabase db reset
+make supabase-start
+make supabase-status
+make supabase-stop
+make supabase-reset
 ```
 
 What each one means:
 
-- `supabase stop`: stops local services but keeps local state
-- `supabase start`: starts or resumes the local stack
-- `supabase status`: shows local URLs, keys, and service health
-- `supabase db reset`: destroys and recreates the local database from migrations and seeds
+- `make supabase-stop`: stops local services but keeps local state
+- `make supabase-start`: starts or resumes the local stack
+- `make supabase-status`: shows local URLs, keys, and service health
+- `make supabase-reset`: destroys and recreates the local database from migrations and seeds
 
-Use `supabase db reset` when:
+Use `make supabase-reset` when:
 
 - you changed migrations
 - you want a known-clean database state
 - you want to verify the checked-in schema can be rebuilt from scratch
 
-Avoid using `supabase db reset` if you want to preserve local test data.
+Avoid using `make supabase-reset` if you want to preserve local test data.
 
 ## Local env defaults
 

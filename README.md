@@ -23,20 +23,21 @@ FreshCycle now uses the Supabase CLI local stack for development by default.
 
 This repository treats the Supabase CLI as the local orchestration layer for database and supporting services. We are not maintaining a parallel Docker Compose setup for Supabase right now.
 
+The default root command surface is now the project [Makefile](/Users/gp-macbook/Projects/FreshCycle/Makefile#L1).
+
 1. Install the base tools:
    - Node.js
    - Go
    - Docker Desktop
    - Supabase CLI
-2. Copy the example env files:
-   - `cp app/.env.example app/.env.local`
-   - `cp api/.env.example api/.env.local`
+2. Bootstrap the repo:
+   - `make bootstrap`
 3. Start the local Supabase stack from the repo root:
-   - `supabase start`
+   - `make supabase-start`
 4. Start the API:
-   - `cd api && go run ./cmd/api`
+   - `make api`
 5. Start the Expo app:
-   - `cd app && npm install && npm run start`
+   - `make app`
 
 The local Supabase stack provides:
 
@@ -48,19 +49,19 @@ For a fuller walkthrough, see [docs/local-development.md](/Users/gp-macbook/Proj
 
 ## Getting started
 
-1. Copy the app and API example env files to `.env.local`.
-2. Run `supabase start` from the repo root.
-3. In [`app`](/Users/gp-macbook/Projects/FreshCycle/app), run `npm install` and `npm run start`.
-4. In [`api`](/Users/gp-macbook/Projects/FreshCycle/api), run `go run ./cmd/api`.
-5. Use `npm run typecheck` in [`app`](/Users/gp-macbook/Projects/FreshCycle/app) and `go test ./...` in [`api`](/Users/gp-macbook/Projects/FreshCycle/api) to verify the scaffold.
-6. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) and use `supabase db reset` or `supabase db push` when evolving it.
+1. Run `make bootstrap`.
+2. Run `make supabase-start`.
+3. Run `make api`.
+4. Run `make app`.
+5. Run `make test` to verify the scaffold.
+6. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) and use `make supabase-reset` or `supabase db push` when evolving it.
 
 Useful local Supabase lifecycle commands:
 
-- `supabase start`
-- `supabase status`
-- `supabase stop`
-- `supabase db reset`
+- `make supabase-start`
+- `make supabase-status`
+- `make supabase-stop`
+- `make supabase-reset`
 - `supabase db push`
 
 ## Environment files
@@ -73,4 +74,4 @@ Hosted Supabase values can still be used when needed, but local development shou
 
 ## Next Phase 1 steps
 
-- add root-level bootstrap commands for new-machine setup
+- continue refining the monorepo command surface as more slices land
