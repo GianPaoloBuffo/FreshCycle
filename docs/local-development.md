@@ -58,6 +58,31 @@ make supabase-status
 make app
 ```
 
+## Run on an Android device with a dev build
+
+Expo Go is not the long-term path for this app. FreshCycle now includes `expo-dev-client`, which lets you install a project-specific development build on Android.
+
+From the repository root:
+
+```bash
+make app-android-dev
+```
+
+This runs `expo run:android`, generates the native Android project if needed, builds a debug APK, and installs it on a connected Android device or running emulator.
+
+Suggested workflow:
+
+1. Enable Developer Options and USB debugging on the Android device.
+2. Connect the device over USB and confirm it appears in `adb devices`.
+3. Run `make app-android-dev` once to install the dev client.
+4. After the app is installed, use `make app` for the Metro bundler and open the FreshCycle dev build on the device.
+
+Important network note:
+
+- [`app/.env.local`](/Users/gp-macbook/Projects/FreshCycle/app/.env.local) cannot use `localhost` or `127.0.0.1` for services you want to reach from a physical Android device.
+- Replace `EXPO_PUBLIC_API_BASE_URL` and, if needed, `EXPO_PUBLIC_SUPABASE_URL` with your laptop's LAN IP, for example `http://192.168.1.25:8080`.
+- Keep `EXPO_PUBLIC_AUTH_REDIRECT_URL=freshcycle://auth/callback` so auth redirects continue to open the app.
+
 Useful verification commands:
 
 ```bash

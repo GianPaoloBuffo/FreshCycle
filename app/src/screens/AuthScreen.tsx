@@ -1,5 +1,15 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
@@ -50,96 +60,110 @@ export function AuthScreen() {
 
   return (
     <AppScreen>
-      <View style={styles.hero}>
-        <Text style={styles.eyebrow}>Supabase auth</Text>
-        <Text style={styles.title}>Basic email and password auth is ready for Phase 1.</Text>
-        <Text style={styles.body}>
-          This screen provides the first user-facing auth flow while keeping the rest of the app
-          shell stable for later protected routes and API integration.
-        </Text>
-      </View>
-
-      <View style={styles.modeRow}>
-        <Pressable
-          onPress={() => setMode('sign-in')}
-          style={[styles.modeButton, mode === 'sign-in' && styles.modeButtonActive]}>
-          <Text style={[styles.modeText, mode === 'sign-in' && styles.modeTextActive]}>Sign in</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setMode('sign-up')}
-          style={[styles.modeButton, mode === 'sign-up' && styles.modeButtonActive]}>
-          <Text style={[styles.modeText, mode === 'sign-up' && styles.modeTextActive]}>Sign up</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor={palette.inkMuted}
-          style={styles.input}
-          value={email}
-        />
-
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          autoCapitalize="none"
-          onChangeText={setPassword}
-          placeholder="At least 6 characters"
-          placeholderTextColor={palette.inkMuted}
-          secureTextEntry
-          style={styles.input}
-          value={password}
-        />
-
-        {!authReady && (
-          <Text style={styles.helpText}>
-            Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to enable auth.
-          </Text>
-        )}
-
-        {feedback && <Text style={styles.feedback}>{feedback}</Text>}
-
-        <Pressable
-          disabled={!canSubmit}
-          onPress={() => void handleSubmit()}
-          style={[styles.primaryButton, !canSubmit && styles.primaryButtonDisabled]}>
-          {submitting ? (
-            <ActivityIndicator color="#f7f2e8" />
-          ) : (
-            <Text style={styles.primaryButtonText}>
-              {mode === 'sign-in' ? 'Sign in' : 'Create account'}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.container}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.hero}>
+            <Text style={styles.eyebrow}>Supabase auth</Text>
+            <Text style={styles.title}>Basic email and password auth is ready for Phase 1.</Text>
+            <Text style={styles.body}>
+              This screen provides the first user-facing auth flow while keeping the rest of the app
+              shell stable for later protected routes and API integration.
             </Text>
-          )}
-        </Pressable>
-      </View>
+          </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Session state</Text>
-        {loading && <Text style={styles.helpText}>Loading auth session...</Text>}
-        {!loading && !session && (
-          <Text style={styles.helpText}>No session is active yet on this device.</Text>
-        )}
-        {!loading && session && (
-          <>
-            <Text style={styles.helpText}>
-              Signed in as {session.user.email ?? 'an authenticated user'}.
-            </Text>
-            <Pressable onPress={() => void signOut()} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>Sign out</Text>
+          <View style={styles.modeRow}>
+            <Pressable
+              onPress={() => setMode('sign-in')}
+              style={[styles.modeButton, mode === 'sign-in' && styles.modeButtonActive]}>
+              <Text style={[styles.modeText, mode === 'sign-in' && styles.modeTextActive]}>Sign in</Text>
             </Pressable>
-          </>
-        )}
-      </View>
+            <Pressable
+              onPress={() => setMode('sign-up')}
+              style={[styles.modeButton, mode === 'sign-up' && styles.modeButtonActive]}>
+              <Text style={[styles.modeText, mode === 'sign-up' && styles.modeTextActive]}>Sign up</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              placeholderTextColor={palette.inkMuted}
+              style={styles.input}
+              value={email}
+            />
+
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              autoCapitalize="none"
+              onChangeText={setPassword}
+              placeholder="At least 6 characters"
+              placeholderTextColor={palette.inkMuted}
+              secureTextEntry
+              style={styles.input}
+              value={password}
+            />
+
+            {!authReady && (
+              <Text style={styles.helpText}>
+                Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to enable auth.
+              </Text>
+            )}
+
+            {feedback && <Text style={styles.feedback}>{feedback}</Text>}
+
+            <Pressable
+              disabled={!canSubmit}
+              onPress={() => void handleSubmit()}
+              style={[styles.primaryButton, !canSubmit && styles.primaryButtonDisabled]}>
+              {submitting ? (
+                <ActivityIndicator color="#f7f2e8" />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {mode === 'sign-in' ? 'Sign in' : 'Create account'}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Session state</Text>
+            {loading && <Text style={styles.helpText}>Loading auth session...</Text>}
+            {!loading && !session && (
+              <Text style={styles.helpText}>No session is active yet on this device.</Text>
+            )}
+            {!loading && session && (
+              <>
+                <Text style={styles.helpText}>
+                  Signed in as {session.user.email ?? 'an authenticated user'}.
+                </Text>
+                <Pressable onPress={() => void signOut()} style={styles.secondaryButton}>
+                  <Text style={styles.secondaryButtonText}>Sign out</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 24,
+  },
   hero: {
     gap: 12,
     marginBottom: 20,

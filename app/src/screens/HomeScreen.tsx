@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
@@ -14,64 +14,69 @@ export function HomeScreen() {
 
   return (
     <AppScreen>
-      <View style={styles.hero}>
-        <Text style={styles.eyebrow}>Phase 2 in progress</Text>
-        <Text style={styles.title}>FreshCycle is ready to start the garment label capture flow.</Text>
-        <Text style={styles.body}>
-          The mobile shell now includes the first add-garment capture slice so we can take or
-          upload care-label photos before the parser and save flow land.
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>What is ready now</Text>
-        <Text style={styles.listItem}>Camera and photo library entry points for care-label capture</Text>
-        <Text style={styles.listItem}>A processing state and preview surface for parsing feedback</Text>
-        <Text style={styles.listItem}>Instrumentation hooks for selection and parsing events</Text>
-        <Text style={styles.listItem}>Supabase-backed auth state to gate the garment flow</Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Config status</Text>
-        <Text style={styles.meta}>API base URL: {env.apiBaseUrl ?? 'not configured'}</Text>
-        <Text style={styles.meta}>Supabase URL: {env.supabaseUrl ?? 'not configured'}</Text>
-        <Text style={styles.meta}>
-          Supabase key: {env.supabaseKey ? 'configured' : 'not configured'}
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Auth status</Text>
-        {!authReady && (
-          <Text style={styles.meta}>
-            Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to enable auth.
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.hero}>
+          <Text style={styles.eyebrow}>Phase 2 in progress</Text>
+          <Text style={styles.title}>FreshCycle is ready to start the garment label capture flow.</Text>
+          <Text style={styles.body}>
+            The mobile shell now includes the first add-garment capture slice so we can take or
+            upload care-label photos before the parser and save flow land.
           </Text>
-        )}
-        {authReady && loading && <Text style={styles.meta}>Checking your session...</Text>}
-        {authReady && !loading && !session && (
-          <Text style={styles.meta}>No active session yet. Use the auth screen to sign in.</Text>
-        )}
-        {authReady && !loading && session && (
-          <>
-            <Text style={styles.meta}>Signed in as {userEmail ?? 'an authenticated user'}.</Text>
-            <Pressable onPress={() => void signOut()} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>Sign out</Text>
-            </Pressable>
-          </>
-        )}
-      </View>
+        </View>
 
-      <Link href={'/add-garment' as never} style={styles.link}>
-        Open add garment flow
-      </Link>
-      <Link href="/auth" style={styles.linkSecondary}>
-        Open auth screens
-      </Link>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>What is ready now</Text>
+          <Text style={styles.listItem}>Camera and photo library entry points for care-label capture</Text>
+          <Text style={styles.listItem}>A processing state and preview surface for parsing feedback</Text>
+          <Text style={styles.listItem}>Instrumentation hooks for selection and parsing events</Text>
+          <Text style={styles.listItem}>Supabase-backed auth state to gate the garment flow</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Config status</Text>
+          <Text style={styles.meta}>API base URL: {env.apiBaseUrl ?? 'not configured'}</Text>
+          <Text style={styles.meta}>Supabase URL: {env.supabaseUrl ?? 'not configured'}</Text>
+          <Text style={styles.meta}>
+            Supabase key: {env.supabaseKey ? 'configured' : 'not configured'}
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Auth status</Text>
+          {!authReady && (
+            <Text style={styles.meta}>
+              Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to enable auth.
+            </Text>
+          )}
+          {authReady && loading && <Text style={styles.meta}>Checking your session...</Text>}
+          {authReady && !loading && !session && (
+            <Text style={styles.meta}>No active session yet. Use the auth screen to sign in.</Text>
+          )}
+          {authReady && !loading && session && (
+            <>
+              <Text style={styles.meta}>Signed in as {userEmail ?? 'an authenticated user'}.</Text>
+              <Pressable onPress={() => void signOut()} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>Sign out</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+
+        <Link href={'/add-garment' as never} style={styles.link}>
+          Open add garment flow
+        </Link>
+        <Link href="/auth" style={styles.linkSecondary}>
+          Open auth screens
+        </Link>
+      </ScrollView>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    paddingBottom: 24,
+  },
   hero: {
     gap: 12,
     marginBottom: 20,

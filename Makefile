@@ -1,4 +1,4 @@
-.PHONY: help bootstrap install install-app supabase-start supabase-stop supabase-status supabase-reset app api test test-app test-api
+.PHONY: help bootstrap install install-app supabase-start supabase-stop supabase-status supabase-reset app app-android-dev api test test-app test-api
 
 APP_DIR := app
 API_DIR := api
@@ -7,6 +7,9 @@ NPM_CACHE := $(ROOT_DIR)/.npm-cache
 GOPATH_LOCAL := $(ROOT_DIR)/.go
 GOCACHE_LOCAL := $(ROOT_DIR)/.go-cache
 GOMODCACHE_LOCAL := $(ROOT_DIR)/.go-mod-cache
+GRADLE_USER_HOME_LOCAL := $(ROOT_DIR)/.gradle
+ANDROID_SDK_ROOT_LOCAL := $(HOME)/Library/Android/sdk
+ANDROID_STUDIO_JAVA_HOME := /Applications/Android Studio.app/Contents/jbr/Contents/Home
 
 help:
 	@printf "FreshCycle root commands\n\n"
@@ -17,6 +20,7 @@ help:
 	@printf "  make supabase-status  Show local Supabase status and credentials\n"
 	@printf "  make supabase-reset   Rebuild the local database from migrations and seed\n"
 	@printf "  make app             Start the Expo app\n"
+	@printf "  make app-android-dev Build and install the local Android dev client\n"
 	@printf "  make api             Start the Go API\n"
 	@printf "  make test            Run app and API verification commands\n"
 
@@ -45,6 +49,9 @@ supabase-reset:
 
 app:
 	cd $(APP_DIR) && npm run start
+
+app-android-dev:
+	cd $(APP_DIR) && JAVA_HOME="$(ANDROID_STUDIO_JAVA_HOME)" PATH="$(ANDROID_STUDIO_JAVA_HOME)/bin:$$PATH" GRADLE_USER_HOME="$(GRADLE_USER_HOME_LOCAL)" ANDROID_HOME="$(ANDROID_SDK_ROOT_LOCAL)" ANDROID_SDK_ROOT="$(ANDROID_SDK_ROOT_LOCAL)" npm run android:dev
 
 api:
 	cd $(API_DIR) && GOPATH=$(GOPATH_LOCAL) GOCACHE=$(GOCACHE_LOCAL) GOMODCACHE=$(GOMODCACHE_LOCAL) go run ./cmd/api

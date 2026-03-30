@@ -1,6 +1,7 @@
 # workspace-local tooling
 .local-tools/
 .npm-cache/
+.gradle/
 .expo-home/
 
 # macOS and editors
