@@ -12,7 +12,7 @@ export const supabase = createClient(env.supabaseUrl ?? 'https://placeholder.inv
     ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web',
     lock: processLock,
   },
 });

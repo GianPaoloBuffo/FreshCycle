@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
@@ -10,7 +10,9 @@ const env = getAppEnv();
 
 export function HomeScreen() {
   const { authReady, loading, session, signOut } = useAuth();
+  const { width } = useWindowDimensions();
   const userEmail = session?.user.email ?? null;
+  const isCompact = width < 640;
 
   return (
     <AppScreen>
@@ -19,17 +21,18 @@ export function HomeScreen() {
           <Text style={styles.eyebrow}>Phase 2 in progress</Text>
           <Text style={styles.title}>FreshCycle is ready to start the garment label capture flow.</Text>
           <Text style={styles.body}>
-            The mobile shell now includes the first add-garment capture slice so we can take or
-            upload care-label photos before the parser and save flow land.
+            The app now supports browser access too, so we can test auth and the current
+            add-garment flow from desktop and mobile web before the parser and save flow land.
           </Text>
         </View>
 
-        <View style={styles.card}>
+        <View style={[styles.card, styles.featureCard]}>
           <Text style={styles.cardTitle}>What is ready now</Text>
           <Text style={styles.listItem}>Camera and photo library entry points for care-label capture</Text>
           <Text style={styles.listItem}>A processing state and preview surface for parsing feedback</Text>
           <Text style={styles.listItem}>Instrumentation hooks for selection and parsing events</Text>
           <Text style={styles.listItem}>Supabase-backed auth state to gate the garment flow</Text>
+          <Text style={styles.listItem}>Responsive browser access for laptop and phone testing</Text>
         </View>
 
         <View style={styles.card}>
@@ -62,10 +65,10 @@ export function HomeScreen() {
           )}
         </View>
 
-        <Link href={'/add-garment' as never} style={styles.link}>
+        <Link href={'/add-garment' as never} style={[styles.link, isCompact && styles.linkCompact]}>
           Open add garment flow
         </Link>
-        <Link href="/auth" style={styles.linkSecondary}>
+        <Link href="/auth" style={[styles.linkSecondary, isCompact && styles.linkCompact]}>
           Open auth screens
         </Link>
       </ScrollView>
@@ -108,6 +111,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 20,
   },
+  featureCard: {
+    width: '100%',
+    maxWidth: 720,
+  },
   cardTitle: {
     color: palette.ink,
     fontSize: 18,
@@ -134,6 +141,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     marginTop: 12,
+  },
+  linkCompact: {
+    alignSelf: 'flex-start',
   },
   secondaryButton: {
     alignItems: 'center',

@@ -38,6 +38,8 @@ The default root command surface is now the project [Makefile](/Users/gp-macbook
    - `make api`
 5. Start the Expo app:
    - `make app`
+6. Start the browser app when you want desktop or mobile web testing:
+   - `make app-web`
 
 The local Supabase stack provides:
 
@@ -53,8 +55,9 @@ For a fuller walkthrough, see [docs/local-development.md](/Users/gp-macbook/Proj
 2. Run `make supabase-start`.
 3. Run `make api`.
 4. Run `make app`.
-5. Run `make test` to verify the scaffold.
-6. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) and use `make supabase-reset` or `supabase db push` when evolving it.
+5. Run `make app-web` if you want to test in a browser.
+6. Run `make test` to verify the scaffold.
+7. Review the initial schema in [`supabase/migrations`](/Users/gp-macbook/Projects/FreshCycle/supabase/migrations) and use `make supabase-reset` or `supabase db push` when evolving it.
 
 Useful local Supabase lifecycle commands:
 
@@ -62,6 +65,8 @@ Useful local Supabase lifecycle commands:
 - `make supabase-status`
 - `make supabase-stop`
 - `make supabase-reset`
+- `make app-web`
+- `make app-web-export`
 - `supabase db push`
 
 ## Environment files
@@ -69,6 +74,7 @@ Useful local Supabase lifecycle commands:
 - [`app/.env.example`](/Users/gp-macbook/Projects/FreshCycle/app/.env.example#L1): local Expo app defaults for the Supabase CLI stack
 - [`api/.env.example`](/Users/gp-macbook/Projects/FreshCycle/api/.env.example#L1): local Go API defaults for the Supabase CLI stack
 - [.env.example](/Users/gp-macbook/Projects/FreshCycle/.env.example#L1): combined reference for app and API variables
+- [docs/web-deployment.md](/Users/gp-macbook/Projects/FreshCycle/docs/web-deployment.md#L1): hosted browser deployment notes for Vercel and hosted Supabase
 
 Hosted Supabase values can still be used when needed, but local development should prefer the CLI-managed local stack.
 

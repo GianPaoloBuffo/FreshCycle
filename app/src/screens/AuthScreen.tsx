@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -19,6 +20,7 @@ type AuthMode = 'sign-in' | 'sign-up';
 
 export function AuthScreen() {
   const { authReady, loading, session, signIn, signUp, signOut } = useAuth();
+  const { width } = useWindowDimensions();
   const [mode, setMode] = useState<AuthMode>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,6 +30,7 @@ export function AuthScreen() {
   const canSubmit = useMemo(() => {
     return authReady && email.trim().length > 0 && password.length >= 6 && !submitting;
   }, [authReady, email, password, submitting]);
+  const useSingleColumnLayout = width < 640;
 
   async function handleSubmit() {
     if (!canSubmit) {
@@ -75,20 +78,28 @@ export function AuthScreen() {
             </Text>
           </View>
 
-          <View style={styles.modeRow}>
+          <View style={[styles.modeRow, useSingleColumnLayout && styles.modeRowStacked]}>
             <Pressable
               onPress={() => setMode('sign-in')}
-              style={[styles.modeButton, mode === 'sign-in' && styles.modeButtonActive]}>
+              style={[
+                styles.modeButton,
+                useSingleColumnLayout && styles.modeButtonFullWidth,
+                mode === 'sign-in' && styles.modeButtonActive,
+              ]}>
               <Text style={[styles.modeText, mode === 'sign-in' && styles.modeTextActive]}>Sign in</Text>
             </Pressable>
             <Pressable
               onPress={() => setMode('sign-up')}
-              style={[styles.modeButton, mode === 'sign-up' && styles.modeButtonActive]}>
+              style={[
+                styles.modeButton,
+                useSingleColumnLayout && styles.modeButtonFullWidth,
+                mode === 'sign-up' && styles.modeButtonActive,
+              ]}>
               <Text style={[styles.modeText, mode === 'sign-up' && styles.modeTextActive]}>Sign up</Text>
             </Pressable>
           </View>
 
-          <View style={styles.card}>
+          <View style={[styles.card, styles.formCard]}>
             <Text style={styles.label}>Email</Text>
             <TextInput
               autoCapitalize="none"
@@ -191,6 +202,9 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 16,
   },
+  modeRowStacked: {
+    flexDirection: 'column',
+  },
   modeButton: {
     backgroundColor: palette.card,
     borderColor: palette.border,
@@ -198,6 +212,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  modeButtonFullWidth: {
+    alignItems: 'center',
   },
   modeButtonActive: {
     backgroundColor: palette.cardStrong,
@@ -219,6 +236,10 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 16,
     padding: 20,
+  },
+  formCard: {
+    width: '100%',
+    maxWidth: 560,
   },
   cardTitle: {
     color: palette.ink,

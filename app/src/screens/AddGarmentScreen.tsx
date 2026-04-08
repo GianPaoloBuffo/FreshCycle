@@ -1,7 +1,17 @@
 import { Link } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
 import {
   AddGarmentActionError,
@@ -19,6 +29,7 @@ type FlowStatus = 'idle' | 'selecting' | 'processing' | 'ready';
 
 export function AddGarmentScreen() {
   const { authReady, loading, session } = useAuth();
+  const { width } = useWindowDimensions();
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedLabelPhoto | null>(null);
   const [parseResult, setParseResult] = useState<ParsedLabelResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -26,6 +37,7 @@ export function AddGarmentScreen() {
 
   const canUseCamera = Platform.OS !== 'web';
   const isBusy = status === 'selecting' || status === 'processing';
+  const stackButtons = width < 720;
 
   async function handleSourceSelection(source: SelectedLabelPhoto['source']) {
     setErrorMessage(null);
@@ -117,12 +129,16 @@ export function AddGarmentScreen() {
             Clear, cropped label photos give the parser the best chance of producing useful garment data.
           </Text>
 
-          <View style={styles.buttonRow}>
+          <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
             <Pressable
               accessibilityLabel="Take a photo with the camera"
               disabled={!session || isBusy || !canUseCamera}
               onPress={() => void handleSourceSelection('camera')}
-              style={[styles.primaryButton, (!session || isBusy || !canUseCamera) && styles.buttonDisabled]}>
+              style={[
+                styles.primaryButton,
+                stackButtons && styles.fullWidthButton,
+                (!session || isBusy || !canUseCamera) && styles.buttonDisabled,
+              ]}>
               <Text style={styles.primaryButtonText}>
                 {canUseCamera ? 'Use camera' : 'Camera not available here'}
               </Text>
@@ -132,13 +148,19 @@ export function AddGarmentScreen() {
               accessibilityLabel="Choose a photo from the library"
               disabled={!session || isBusy}
               onPress={() => void handleSourceSelection('library')}
-              style={[styles.secondaryButton, (!session || isBusy) && styles.buttonDisabled]}>
+              style={[
+                styles.secondaryButton,
+                stackButtons && styles.fullWidthButton,
+                (!session || isBusy) && styles.buttonDisabled,
+              ]}>
               <Text style={styles.secondaryButtonText}>Choose from library</Text>
             </Pressable>
           </View>
 
           <Text style={styles.helperText}>
-            If camera access is denied, the library path stays available so the flow never dead-ends.
+            {Platform.OS === 'web'
+              ? 'Browser testing currently uses file upload. Native camera capture remains available in the mobile app.'
+              : 'If camera access is denied, the library path stays available so the flow never dead-ends.'}
           </Text>
         </View>
 
@@ -314,7 +336,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   buttonRow: {
+    flexDirection: 'row',
     gap: 12,
+    flexWrap: 'wrap',
+  },
+  buttonRowStacked: {
+    flexDirection: 'column',
   },
   primaryButton: {
     alignItems: 'center',
@@ -334,6 +361,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  fullWidthButton: {
+    width: '100%',
   },
   secondaryButtonText: {
     color: palette.ink,

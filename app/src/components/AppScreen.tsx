@@ -8,7 +8,9 @@ type AppScreenProps = PropsWithChildren<{
 export function AppScreen({ children, padded = true }: AppScreenProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={[styles.content, padded && styles.padded]}>{children}</View>
+      <View style={styles.content}>
+        <View style={[styles.shell, padded && styles.padded]}>{children}</View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -20,6 +22,12 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    alignItems: 'center',
+  },
+  shell: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 960,
   },
   padded: {
     paddingHorizontal: 24,

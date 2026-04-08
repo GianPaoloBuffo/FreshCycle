@@ -1,4 +1,4 @@
-.PHONY: help bootstrap install install-app supabase-start supabase-stop supabase-status supabase-reset app app-android-dev api test test-app test-api
+.PHONY: help bootstrap install install-app supabase-start supabase-stop supabase-status supabase-reset app app-web app-web-export app-android-dev api test test-app test-api
 
 APP_DIR := app
 API_DIR := api
@@ -20,6 +20,8 @@ help:
 	@printf "  make supabase-status  Show local Supabase status and credentials\n"
 	@printf "  make supabase-reset   Rebuild the local database from migrations and seed\n"
 	@printf "  make app             Start the Expo app\n"
+	@printf "  make app-web         Start the Expo app in a browser\n"
+	@printf "  make app-web-export  Export the static web build\n"
 	@printf "  make app-android-dev Build and install the local Android dev client\n"
 	@printf "  make api             Start the Go API\n"
 	@printf "  make test            Run app and API verification commands\n"
@@ -49,6 +51,12 @@ supabase-reset:
 
 app:
 	cd $(APP_DIR) && npm run start
+
+app-web:
+	cd $(APP_DIR) && npm run web
+
+app-web-export:
+	cd $(APP_DIR) && npm run export:web
 
 app-android-dev:
 	cd $(APP_DIR) && JAVA_HOME="$(ANDROID_STUDIO_JAVA_HOME)" PATH="$(ANDROID_STUDIO_JAVA_HOME)/bin:$$PATH" GRADLE_USER_HOME="$(GRADLE_USER_HOME_LOCAL)" ANDROID_HOME="$(ANDROID_SDK_ROOT_LOCAL)" ANDROID_SDK_ROOT="$(ANDROID_SDK_ROOT_LOCAL)" npm run android:dev

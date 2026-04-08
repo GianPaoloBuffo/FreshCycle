@@ -1,7 +1,8 @@
-import { Session } from '@supabase/supabase-js';
 import { createContext, PropsWithChildren, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
+import { Session } from '@supabase/supabase-js';
 
-import { getAppEnv } from '@/lib/env';
+import { getAppEnv, getAuthRedirectUrl } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 
 type Credentials = {
@@ -85,7 +86,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
         };
       }
 
-      const { data, error } = await supabase.auth.signUp(credentials);
+      const emailRedirectTo = getAuthRedirectUrl(Platform.OS === 'web' ? 'web' : 'native');
+      const { data, error } = await supabase.auth.signUp({
+        ...credentials,
+        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+      });
 
       return {
         error: error ? new Error(error.message) : null,

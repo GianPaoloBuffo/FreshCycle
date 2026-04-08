@@ -58,6 +58,20 @@ make supabase-status
 make app
 ```
 
+## Run the browser app
+
+```bash
+make app-web
+```
+
+This is the fastest way to test the current FreshCycle flow from a laptop browser.
+
+Important browser note:
+
+- A phone browser cannot use your laptop's `localhost` or `127.0.0.1` services.
+- Same-network phone testing requires LAN-reachable service URLs.
+- Public browser testing requires a hosted frontend plus a hosted backend, not the local Supabase CLI stack.
+
 ## Run on an Android device with a dev build
 
 Expo Go is not the long-term path for this app. FreshCycle now includes `expo-dev-client`, which lets you install a project-specific development build on Android.
@@ -81,13 +95,13 @@ Important network note:
 
 - [`app/.env.local`](/Users/gp-macbook/Projects/FreshCycle/app/.env.local) cannot use `localhost` or `127.0.0.1` for services you want to reach from a physical Android device.
 - Replace `EXPO_PUBLIC_API_BASE_URL` and, if needed, `EXPO_PUBLIC_SUPABASE_URL` with your laptop's LAN IP, for example `http://192.168.1.25:8080`.
-- Keep `EXPO_PUBLIC_AUTH_REDIRECT_URL=freshcycle://auth/callback` so auth redirects continue to open the app.
+- Keep `EXPO_PUBLIC_NATIVE_AUTH_REDIRECT_URL=freshcycle://auth/callback` so auth redirects continue to open the app.
 
 Useful verification commands:
 
 ```bash
 make test
-cd app && CI=1 npx expo export --platform web
+make app-web-export
 ```
 
 ## Run the API
@@ -155,6 +169,11 @@ Avoid using `make supabase-reset` if you want to preserve local test data.
 `api/.env.example` points the Go API at the local Supabase Postgres instance.
 
 If you intentionally want to use the hosted Supabase project instead, replace the local URLs and keys in your `.env.local` files with the hosted project values.
+
+For hosted browser deployments, also set:
+
+- `EXPO_PUBLIC_WEB_AUTH_REDIRECT_URL`
+- `EXPO_PUBLIC_NATIVE_AUTH_REDIRECT_URL` if you still run native builds from the same repo
 
 ## Seed data
 
