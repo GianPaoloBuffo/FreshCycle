@@ -35,7 +35,7 @@ export function AddGarmentScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [status, setStatus] = useState<FlowStatus>('idle');
 
-  const canUseCamera = Platform.OS !== 'web';
+  const canUseCamera = true;
   const isBusy = status === 'selecting' || status === 'processing';
   const stackButtons = width < 720;
 
@@ -140,7 +140,7 @@ export function AddGarmentScreen() {
                 (!session || isBusy || !canUseCamera) && styles.buttonDisabled,
               ]}>
               <Text style={styles.primaryButtonText}>
-                {canUseCamera ? 'Use camera' : 'Camera not available here'}
+                {Platform.OS === 'web' ? 'Use camera or camera upload' : 'Use camera'}
               </Text>
             </Pressable>
 
@@ -159,7 +159,7 @@ export function AddGarmentScreen() {
 
           <Text style={styles.helperText}>
             {Platform.OS === 'web'
-              ? 'Browser testing currently uses file upload. Native camera capture remains available in the mobile app.'
+              ? 'On the web, supported browsers can open the device camera from the picker. If not, the same action falls back to the browser file chooser.'
               : 'If camera access is denied, the library path stays available so the flow never dead-ends.'}
           </Text>
         </View>
@@ -223,18 +223,16 @@ export function AddGarmentScreen() {
 
 async function pickLabelPhoto(source: SelectedLabelPhoto['source']) {
   if (source === 'camera') {
-    if (Platform.OS === 'web') {
-      throw new AddGarmentActionError('camera-unavailable');
-    }
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
 
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permission.granted) {
-      throw new AddGarmentActionError('camera-permission-denied');
+      if (!permission.granted) {
+        throw new AddGarmentActionError('camera-permission-denied');
+      }
     }
 
     const result = await ImagePicker.launchCameraAsync(getPickerOptions());
-    return result.canceled ? null : normalizeSelectedPhoto(result.assets?.[0], source);
+    return normalizePickerResult(result, source);
   }
 
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -244,7 +242,24 @@ async function pickLabelPhoto(source: SelectedLabelPhoto['source']) {
   }
 
   const result = await ImagePicker.launchImageLibraryAsync(getPickerOptions());
-  return result.canceled ? null : normalizeSelectedPhoto(result.assets?.[0], source);
+  return normalizePickerResult(result, source);
+}
+
+function normalizePickerResult(
+  result: ImagePicker.ImagePickerResult,
+  source: SelectedLabelPhoto['source']
+) {
+  if ('canceled' in result && result.canceled && !result.assets?.[0]) {
+    return null;
+  }
+
+  const asset = result.assets?.[0];
+
+  if (!asset) {
+    return null;
+  }
+
+  return normalizeSelectedPhoto(asset, source);
 }
 
 function normalizeSelectedPhoto(
