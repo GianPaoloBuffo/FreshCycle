@@ -38,6 +38,14 @@ export function AddGarmentScreen() {
   const canUseCamera = true;
   const isBusy = status === 'selecting' || status === 'processing';
   const stackButtons = width < 720;
+  const hasCapturedPhoto = Boolean(selectedPhoto);
+
+  function resetFlow() {
+    setSelectedPhoto(null);
+    setParseResult(null);
+    setErrorMessage(null);
+    setStatus('idle');
+  }
 
   async function handleSourceSelection(source: SelectedLabelPhoto['source']) {
     setErrorMessage(null);
@@ -168,6 +176,32 @@ export function AddGarmentScreen() {
           <View style={styles.errorCard}>
             <Text style={styles.errorTitle}>Capture needs attention</Text>
             <Text style={styles.errorBody}>{errorMessage}</Text>
+            <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
+              <Pressable
+                accessibilityLabel="Retry capture"
+                disabled={isBusy || !session}
+                onPress={() => void handleSourceSelection(selectedPhoto?.source ?? 'library')}
+                style={[
+                  styles.errorActionButton,
+                  stackButtons && styles.fullWidthButton,
+                  (isBusy || !session) && styles.buttonDisabled,
+                ]}>
+                <Text style={styles.errorActionButtonText}>Retry</Text>
+              </Pressable>
+              {hasCapturedPhoto && (
+                <Pressable
+                  accessibilityLabel="Clear selected label photo"
+                  disabled={isBusy}
+                  onPress={resetFlow}
+                  style={[
+                    styles.secondaryButton,
+                    stackButtons && styles.fullWidthButton,
+                    isBusy && styles.buttonDisabled,
+                  ]}>
+                  <Text style={styles.secondaryButtonText}>Clear photo</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
         )}
 
@@ -214,6 +248,30 @@ export function AddGarmentScreen() {
             <Text style={styles.metaFootnote}>
               Last processed in {parseResult.durationMs}ms at {new Date(parseResult.completedAt).toLocaleTimeString()}.
             </Text>
+            <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
+              <Pressable
+                accessibilityLabel="Capture a different label photo"
+                disabled={isBusy || !session}
+                onPress={() => void handleSourceSelection('camera')}
+                style={[
+                  styles.primaryButton,
+                  stackButtons && styles.fullWidthButton,
+                  (isBusy || !session) && styles.buttonDisabled,
+                ]}>
+                <Text style={styles.primaryButtonText}>Retake with camera</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Choose a different label photo from the library"
+                disabled={isBusy || !session}
+                onPress={() => void handleSourceSelection('library')}
+                style={[
+                  styles.secondaryButton,
+                  stackButtons && styles.fullWidthButton,
+                  (isBusy || !session) && styles.buttonDisabled,
+                ]}>
+                <Text style={styles.secondaryButtonText}>Pick another photo</Text>
+              </Pressable>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -410,6 +468,18 @@ const styles = StyleSheet.create({
     color: '#7a3024',
     fontSize: 15,
     lineHeight: 22,
+  },
+  errorActionButton: {
+    alignItems: 'center',
+    backgroundColor: '#7a3024',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  errorActionButtonText: {
+    color: '#fff4ef',
+    fontSize: 15,
+    fontWeight: '600',
   },
   previewCard: {
     backgroundColor: '#fcf8f0',
