@@ -28,14 +28,21 @@ func (s stubAuthValidator) ValidateAccessToken(_ context.Context, _ string) (aut
 }
 
 type stubGarmentStore struct {
-	result garments.Garment
-	err    error
-	last   garments.CreateInput
+	result     garments.Garment
+	list       []garments.Garment
+	err        error
+	last       garments.CreateInput
+	lastUserID string
 }
 
 func (s *stubGarmentStore) CreateGarment(_ context.Context, input garments.CreateInput) (garments.Garment, error) {
 	s.last = input
 	return s.result, s.err
+}
+
+func (s *stubGarmentStore) ListGarments(_ context.Context, userID string) ([]garments.Garment, error) {
+	s.lastUserID = userID
+	return s.list, s.err
 }
 
 func TestHealthRoute(t *testing.T) {
@@ -215,4 +222,77 @@ func TestCreateGarmentRouteRejectsInvalidLabelImagePath(t *testing.T) {
 	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"invalid_label_image_path"`)) {
 		t.Fatalf("expected invalid_label_image_path response body, got %s", recorder.Body.String())
 	}
+}
+
+func TestListGarmentsRoute(t *testing.T) {
+	t.Parallel()
+
+	store := &stubGarmentStore{
+		list: []garments.Garment{
+			{
+				ID:               "garment-123",
+				UserID:           "user-123",
+				Name:             "Navy Hoodie",
+				Category:         pointerTo("Knitwear"),
+				PrimaryColor:     pointerTo("Navy"),
+				WashTemperatureC: intPointerTo(30),
+				CareInstructions: []string{"Machine washable"},
+			},
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/garments", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), store, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	if store.lastUserID != "user-123" {
+		t.Fatalf("expected user id user-123, got %s", store.lastUserID)
+	}
+
+	var response []garments.Garment
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(response) != 1 {
+		t.Fatalf("expected 1 garment, got %d", len(response))
+	}
+
+	if response[0].Name != "Navy Hoodie" {
+		t.Fatalf("expected garment name Navy Hoodie, got %s", response[0].Name)
+	}
+}
+
+func TestListGarmentsRouteRejectsMissingAuth(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodGet, "/garments", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		err: auth.ErrMissingAccessToken,
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"auth_required"`)) {
+		t.Fatalf("expected auth_required response body, got %s", recorder.Body.String())
+	}
+}
+
+func pointerTo(value string) *string {
+	return &value
+}
+
+func intPointerTo(value int) *int {
+	return &value
 }

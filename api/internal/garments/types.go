@@ -26,4 +26,5 @@ type Garment struct {
 
 type Store interface {
 	CreateGarment(ctx context.Context, input CreateInput) (Garment, error)
+	ListGarments(ctx context.Context, userID string) ([]Garment, error)
 }

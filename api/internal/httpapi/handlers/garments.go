@@ -73,6 +73,26 @@ func CreateGarment(store garments.Store) http.HandlerFunc {
 	}
 }
 
+func ListGarments(store garments.Store) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		user, ok := httpmiddleware.AuthenticatedUserFromContext(request.Context())
+		if !ok || strings.TrimSpace(user.ID) == "" {
+			writeJSONError(writer, http.StatusUnauthorized, "auth_required", "Sign in again before loading garments.")
+			return
+		}
+
+		garmentsList, err := store.ListGarments(request.Context(), user.ID)
+		if err != nil {
+			writeJSONError(writer, http.StatusInternalServerError, "garments_fetch_failed", "FreshCycle could not load your wardrobe just yet.")
+			return
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(writer).Encode(garmentsList)
+	}
+}
+
 func normalizeOptionalString(value *string) *string {
 	if value == nil {
 		return nil

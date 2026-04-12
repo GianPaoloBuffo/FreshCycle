@@ -27,6 +27,7 @@ func NewRouter(parser labelparser.Parser, garmentStore garments.Store, allowedOr
 
 	router.Get("/health", handlers.Health)
 	router.With(httpmiddleware.RequireAuth(validator)).Post("/garments/parse-label", handlers.ParseLabel(parser))
+	router.With(httpmiddleware.RequireAuth(validator)).Get("/garments", handlers.ListGarments(garmentStore))
 	router.With(httpmiddleware.RequireAuth(validator)).Post("/garments", handlers.CreateGarment(garmentStore))
 
 	return router

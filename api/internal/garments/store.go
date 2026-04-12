@@ -79,3 +79,41 @@ func (s PostgresStore) CreateGarment(ctx context.Context, input CreateInput) (Ga
 
 	return garment, nil
 }
+
+func (s PostgresStore) ListGarments(ctx context.Context, userID string) ([]Garment, error) {
+	rows, err := s.db.Query(ctx, `
+		select id, user_id, name, category, primary_color, wash_temperature_c, care_instructions, label_image_path
+		from public.garments
+		where user_id = $1
+		order by created_at desc, name asc
+	`, strings.TrimSpace(userID))
+	if err != nil {
+		return nil, fmt.Errorf("list garments: %w", err)
+	}
+	defer rows.Close()
+
+	garmentsList := make([]Garment, 0)
+	for rows.Next() {
+		var garment Garment
+		if err := rows.Scan(
+			&garment.ID,
+			&garment.UserID,
+			&garment.Name,
+			&garment.Category,
+			&garment.PrimaryColor,
+			&garment.WashTemperatureC,
+			&garment.CareInstructions,
+			&garment.LabelImagePath,
+		); err != nil {
+			return nil, fmt.Errorf("scan garment: %w", err)
+		}
+
+		garmentsList = append(garmentsList, garment)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate garments: %w", err)
+	}
+
+	return garmentsList, nil
+}
