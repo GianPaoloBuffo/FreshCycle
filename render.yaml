@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: freshcycle-api
+    runtime: go
+    rootDir: api
+    plan: free
+    buildCommand: go build -o bin/freshcycle-api ./cmd/api
+    startCommand: ./bin/freshcycle-api
+    healthCheckPath: /health
+    envVars:
+      - key: API_PORT
+        value: "10000"
+      - key: LABEL_PARSER_PROVIDER
+        value: stub
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: API_ALLOWED_ORIGINS
+        value: http://localhost:19006,http://127.0.0.1:19006,http://localhost:8081,https://*.vercel.app
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

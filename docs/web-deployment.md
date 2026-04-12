@@ -8,14 +8,17 @@ For early public testing, use:
 
 - Hosted Supabase for auth, database, and storage
 - Vercel for the Expo web frontend
+- Render for the Go API
 
-This gives FreshCycle a public browser URL without depending on a laptop-bound local stack.
+This gives FreshCycle a public browser URL without depending on a laptop-bound local stack, while keeping the standalone Go API easy to deploy and inspect.
 
 ## Why this split
 
 - Supabase gives us a managed backend with a free tier that is suitable for early testing
 - Vercel is a simple free-tier option for static web hosting
+- Render offers a straightforward public web service for a small Go server
 - The Expo app already exports a static browser build with `expo export --platform web`
+- The Go API already expects a long-running HTTP server, which maps neatly to a Render web service
 
 ## Commands
 
@@ -68,6 +71,26 @@ Recommended Vercel project settings:
 4. Use `npm run export:web` as the build command.
 5. Use `dist` as the output directory if Vercel does not detect it automatically.
 6. Add the `EXPO_PUBLIC_*` environment variables to Preview and Production.
+
+## Recommended API hosting
+
+For FreshCycle's current architecture, Render is the simplest fit for the Go API. Render's web services are designed for public HTTP apps, which aligns with the API's current long-running `chi` server model. Source: [Render service types](https://render.com/docs/service-types).
+
+Vercel is still the right home for the Expo web frontend, but the current project is configured only as a static frontend build. There is not yet a separate hosted API project in Vercel.
+
+FreshCycle now includes [render.yaml](/Users/gp-macbook/Projects/FreshCycle/render.yaml), so you can create the API service from the repo without hand-entering every setting.
+
+Recommended Render steps:
+
+1. Create a new Blueprint or Web Service from this repository.
+2. Use the `freshcycle-api` service defined in [render.yaml](/Users/gp-macbook/Projects/FreshCycle/render.yaml).
+3. Set `SUPABASE_DB_URL` in Render.
+4. Keep `LABEL_PARSER_PROVIDER=stub` for the first smoke test.
+5. Once the service is live, copy its URL into Vercel as `EXPO_PUBLIC_API_BASE_URL`.
+6. Redeploy the Vercel app.
+7. Later, switch to `LABEL_PARSER_PROVIDER=openai` and add `OPENAI_API_KEY` when you're ready for real parsing.
+
+The API now includes CORS support for local Expo web and `*.vercel.app` origins, so browser calls from Vercel previews and production can reach the hosted parser endpoint.
 
 ## Supabase hosted project setup
 

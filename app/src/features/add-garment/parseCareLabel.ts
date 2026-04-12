@@ -2,10 +2,27 @@ import { ImagePickerAsset } from 'expo-image-picker';
 
 import { logAddGarmentError, logAddGarmentEvent } from '@/features/add-garment/observability';
 import { AddGarmentErrorCode, ParsedLabelResult, SelectedLabelPhoto } from '@/features/add-garment/types';
+import { getAppEnv } from '@/lib/env';
 
 type ParseCareLabelDeps = {
   delayMs?: number;
   now?: () => number;
+  apiBaseUrl?: string | null;
+  fetchImpl?: typeof fetch;
+  platform?: string;
+};
+
+type ParseLabelApiResponse = {
+  name_suggestion: string;
+  fabric_notes: string[];
+  wash_temp_max: number | null;
+  machine_washable: boolean;
+  tumble_dry: boolean;
+  dry_clean_only: boolean;
+  iron_allowed: boolean;
+  iron_temp: 'low' | 'medium' | 'high' | null;
+  bleach_allowed: boolean;
+  raw_label_text: string;
 };
 
 export class AddGarmentActionError extends Error {
@@ -38,6 +55,9 @@ export async function parseCareLabelPhoto(
 ): Promise<ParsedLabelResult> {
   const now = deps.now ?? Date.now;
   const delayMs = deps.delayMs ?? 1200;
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const apiBaseUrl = deps.apiBaseUrl ?? getAppEnv().apiBaseUrl;
+  const platform = deps.platform ?? inferRuntimePlatform();
   const startedAt = now();
 
   logAddGarmentEvent('label_parse_started', {
@@ -46,18 +66,35 @@ export async function parseCareLabelPhoto(
   });
 
   try {
-    await wait(delayMs);
+    const apiResult = apiBaseUrl
+      ? await parseViaAPI(photo, {
+          apiBaseUrl,
+          fetchImpl,
+          platform,
+        })
+      : null;
 
-    const result: ParsedLabelResult = {
-      preview: buildPreview(photo),
-      durationMs: now() - startedAt,
-      completedAt: new Date(now()).toISOString(),
-    };
+    if (!apiResult) {
+      await wait(delayMs);
+    }
+
+    const result: ParsedLabelResult = apiResult
+      ? {
+          preview: buildPreviewFromAPI(apiResult),
+          durationMs: now() - startedAt,
+          completedAt: new Date(now()).toISOString(),
+        }
+      : {
+          preview: buildStubPreview(photo),
+          durationMs: now() - startedAt,
+          completedAt: new Date(now()).toISOString(),
+        };
 
     logAddGarmentEvent('label_parse_succeeded', {
       source: photo.source,
       durationMs: result.durationMs,
       garmentName: result.preview.garmentName,
+      parserMode: apiResult ? 'api' : 'stub',
     });
 
     return result;
@@ -86,7 +123,7 @@ export function describeAddGarmentError(code: AddGarmentErrorCode) {
   }
 }
 
-function buildPreview(photo: SelectedLabelPhoto): ParsedLabelResult['preview'] {
+function buildStubPreview(photo: SelectedLabelPhoto): ParsedLabelResult['preview'] {
   const baseName = sanitizeFileStem(photo.fileName ?? inferFileNameFromUri(photo.uri));
   const prettyName = titleize(baseName || 'care label upload');
   const sizeLabel = `${photo.width || '?'}x${photo.height || '?'}`;
@@ -102,6 +139,116 @@ function buildPreview(photo: SelectedLabelPhoto): ParsedLabelResult['preview'] {
       'Parsing is currently running through a local Phase 2 stub until the API-backed parser lands.',
     ],
   };
+}
+
+function buildPreviewFromAPI(result: ParseLabelApiResponse): ParsedLabelResult['preview'] {
+  const notes = [
+    ...result.fabric_notes.map((note) => note.trim()).filter(Boolean),
+    buildInstructionSummary(result),
+  ].filter(Boolean);
+
+  if (result.raw_label_text.trim()) {
+    notes.push(`Detected label text: ${result.raw_label_text.trim()}`);
+  }
+
+  return {
+    garmentName: result.name_suggestion.trim() || 'Needs review',
+    suggestedCategory: result.fabric_notes[0] ?? 'Needs review',
+    careSummary: buildCareSummary(result),
+    confidenceLabel: result.raw_label_text.trim() ? 'Mostly confident' : 'Review needed',
+    notes,
+  };
+}
+
+async function parseViaAPI(
+  photo: SelectedLabelPhoto,
+  deps: {
+    apiBaseUrl: string;
+    fetchImpl: typeof fetch;
+    platform: string;
+  }
+) {
+  const requestBody = await buildMultipartBody(photo, deps);
+  const response = await deps.fetchImpl(`${deps.apiBaseUrl.replace(/\/$/, '')}/garments/parse-label`, {
+    method: 'POST',
+    body: requestBody,
+  });
+
+  if (!response.ok) {
+    throw new AddGarmentActionError('processing-failed');
+  }
+
+  return (await response.json()) as ParseLabelApiResponse;
+}
+
+async function buildMultipartBody(
+  photo: SelectedLabelPhoto,
+  deps: Required<Pick<ParseCareLabelDeps, 'fetchImpl' | 'platform'>>
+) {
+  const formData = new FormData();
+  const fileName = photo.fileName ?? inferFileNameFromUri(photo.uri);
+  const mimeType = photo.mimeType ?? 'image/jpeg';
+
+  if (deps.platform === 'web') {
+    const response = await deps.fetchImpl(photo.uri);
+    const blob = await response.blob();
+    formData.append('image', blob, fileName);
+    return formData;
+  }
+
+  formData.append('image', {
+    uri: photo.uri,
+    name: fileName,
+    type: mimeType,
+  } as never);
+  return formData;
+}
+
+function buildCareSummary(result: ParseLabelApiResponse) {
+  const instructions = [
+    result.machine_washable
+      ? result.wash_temp_max
+        ? `Machine wash up to ${result.wash_temp_max}C`
+        : 'Machine washable'
+      : result.dry_clean_only
+        ? 'Dry clean only'
+        : 'Wash method needs review',
+    result.tumble_dry ? 'Tumble dry allowed' : 'Avoid tumble drying',
+    result.iron_allowed
+      ? result.iron_temp
+        ? `Iron on ${result.iron_temp} heat`
+        : 'Iron allowed'
+      : 'Do not iron',
+    result.bleach_allowed ? 'Bleach allowed' : 'Do not bleach',
+  ];
+
+  return instructions.join('. ');
+}
+
+function buildInstructionSummary(result: ParseLabelApiResponse) {
+  const instructions = [];
+
+  if (result.machine_washable) {
+    instructions.push(result.wash_temp_max ? `wash <= ${result.wash_temp_max}C` : 'machine washable');
+  }
+  if (result.dry_clean_only) {
+    instructions.push('dry clean only');
+  }
+  if (result.tumble_dry) {
+    instructions.push('tumble dry');
+  }
+  if (result.iron_allowed) {
+    instructions.push(result.iron_temp ? `iron ${result.iron_temp}` : 'iron allowed');
+  }
+  if (!result.bleach_allowed) {
+    instructions.push('no bleach');
+  }
+
+  return instructions.length ? `Detected care instructions: ${instructions.join(', ')}.` : '';
+}
+
+function inferRuntimePlatform() {
+  return typeof document !== 'undefined' ? 'web' : 'native';
 }
 
 function sanitizeFileStem(fileName: string) {

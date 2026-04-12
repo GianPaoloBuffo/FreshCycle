@@ -6,6 +6,7 @@ import (
 
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/config"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -22,7 +23,13 @@ func New(cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	router := httpapi.NewRouter()
+	parser, err := labelparser.NewParser(cfg)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	router := httpapi.NewRouter(parser, cfg.AllowedOrigins)
 
 	return &App{
 		config: cfg,

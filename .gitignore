@@ -3,6 +3,7 @@
 .npm-cache/
 .gradle/
 .expo-home/
+.cache/
 
 # macOS and editors
 .DS_Store

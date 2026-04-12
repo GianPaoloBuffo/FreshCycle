@@ -58,6 +58,61 @@ describe('parseCareLabelPhoto', () => {
     expect(result.preview.confidenceLabel).toBe('Mostly confident');
     expect(result.preview.notes[2]).toContain('Phase 2 stub');
   });
+
+  it('uses the API parser when an api base url is configured', async () => {
+    const now = vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(260).mockReturnValueOnce(260);
+    const fetchImpl = vi.fn();
+
+    fetchImpl
+      .mockResolvedValueOnce({
+        blob: () => Promise.resolve(new Blob(['image bytes'], { type: 'image/png' })),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            name_suggestion: 'Navy Hoodie',
+            fabric_notes: ['80% cotton', '20% polyester'],
+            wash_temp_max: 30,
+            machine_washable: true,
+            tumble_dry: false,
+            dry_clean_only: false,
+            iron_allowed: true,
+            iron_temp: 'low',
+            bleach_allowed: false,
+            raw_label_text: 'Machine wash cold. Do not bleach.',
+          }),
+      });
+
+    const result = await parseCareLabelPhoto(
+      {
+        uri: 'https://example.com/hoodie.png',
+        fileName: 'hoodie.png',
+        mimeType: 'image/png',
+        width: 1200,
+        height: 1600,
+        fileSize: 8192,
+        source: 'library',
+      },
+      {
+        apiBaseUrl: 'https://api.example.com',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        now,
+        platform: 'web',
+      }
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://api.example.com/garments/parse-label',
+      expect.objectContaining({
+        method: 'POST',
+      })
+    );
+    expect(result.preview.garmentName).toBe('Navy Hoodie');
+    expect(result.preview.careSummary).toContain('Machine wash up to 30C');
+    expect(result.preview.notes[0]).toContain('80% cotton');
+  });
 });
 
 describe('describeAddGarmentError', () => {

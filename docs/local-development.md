@@ -118,6 +118,17 @@ make test
 
 The API loads `api/.env` and `api/.env.local` automatically if present.
 
+For the Phase 2 parser flow, these API env vars are useful:
+
+- `LABEL_PARSER_PROVIDER=stub` keeps local development deterministic without an AI provider.
+- `LABEL_PARSER_PROVIDER=openai` enables the real parser endpoint.
+- `OPENAI_API_KEY` is required when using the OpenAI parser.
+- `OPENAI_MODEL` optionally overrides the default `gpt-5-mini` vision model.
+
+To route the Expo app through the API-backed parser instead of the local fallback stub, set:
+
+- `EXPO_PUBLIC_API_BASE_URL`
+
 ## Database workflow
 
 Use local Supabase while developing schema changes:
