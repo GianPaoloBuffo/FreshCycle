@@ -3,10 +3,13 @@ package garments
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var canonicalUUIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 type PostgresStore struct {
 	db *pgxpool.Pool
@@ -21,12 +24,24 @@ func (s PostgresStore) CreateGarment(ctx context.Context, input CreateInput) (Ga
 		return Garment{}, ErrNameRequired
 	}
 
+	if input.ID != nil && !canonicalUUIDPattern.MatchString(strings.TrimSpace(*input.ID)) {
+		return Garment{}, ErrInvalidID
+	}
+
 	if input.WashTemperatureC != nil && (*input.WashTemperatureC < 0 || *input.WashTemperatureC > 95) {
 		return Garment{}, ErrWashTemperatureOutOfRange
 	}
 
+	if input.LabelImagePath != nil {
+		expectedPrefix := strings.TrimSpace(input.UserID) + "/labels/"
+		if !strings.HasPrefix(strings.TrimSpace(*input.LabelImagePath), expectedPrefix) {
+			return Garment{}, ErrInvalidLabelImagePath
+		}
+	}
+
 	row := s.db.QueryRow(ctx, `
 		insert into public.garments (
+			id,
 			user_id,
 			name,
 			category,
@@ -35,9 +50,10 @@ func (s PostgresStore) CreateGarment(ctx context.Context, input CreateInput) (Ga
 			care_instructions,
 			label_image_path
 		)
-		values ($1, $2, $3, $4, $5, $6, $7)
+		values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
 		returning id, user_id, name, category, primary_color, wash_temperature_c, care_instructions, label_image_path
 	`,
+		input.ID,
 		input.UserID,
 		strings.TrimSpace(input.Name),
 		input.Category,

@@ -7,6 +7,7 @@ export type SelectedLabelPhoto = {
   width: number;
   height: number;
   fileSize: number | null;
+  webFile?: Blob | null;
   source: LabelPhotoSource;
 };
 
@@ -48,4 +49,5 @@ export type AddGarmentErrorCode =
   | 'selection-empty'
   | 'auth-required'
   | 'save-failed'
+  | 'upload-failed'
   | 'processing-failed';

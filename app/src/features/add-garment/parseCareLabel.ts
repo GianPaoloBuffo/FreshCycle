@@ -53,6 +53,7 @@ export function createSelectedLabelPhoto(
     width: asset.width,
     height: asset.height,
     fileSize: asset.fileSize ?? null,
+    webFile: asset.file ?? null,
     source,
   };
 }
@@ -136,6 +137,8 @@ export function describeAddGarmentError(code: AddGarmentErrorCode) {
       return 'Your FreshCycle session needs attention before we can call the API. Sign in again and retry.';
     case 'save-failed':
       return 'FreshCycle could not save that garment yet. Retry in a moment.';
+    case 'upload-failed':
+      return 'FreshCycle could not upload the label image yet. Retry in a moment.';
     case 'processing-failed':
     default:
       return 'FreshCycle could not process that label just yet. Try another photo or retry in a moment.';

@@ -11,6 +11,7 @@ import (
 )
 
 type createGarmentRequest struct {
+	ID               *string  `json:"id"`
 	Name             string   `json:"name"`
 	Category         *string  `json:"category"`
 	PrimaryColor     *string  `json:"primary_color"`
@@ -33,7 +34,15 @@ func CreateGarment(store garments.Store) http.HandlerFunc {
 			return
 		}
 
+		if path := normalizeOptionalString(payload.LabelImagePath); path != nil {
+			if !strings.HasPrefix(*path, user.ID+"/labels/") {
+				writeJSONError(writer, http.StatusBadRequest, "invalid_label_image_path", "Label uploads must stay inside your private labels folder.")
+				return
+			}
+		}
+
 		garment, err := store.CreateGarment(request.Context(), garments.CreateInput{
+			ID:               normalizeOptionalString(payload.ID),
 			UserID:           user.ID,
 			Name:             payload.Name,
 			Category:         normalizeOptionalString(payload.Category),
@@ -44,10 +53,14 @@ func CreateGarment(store garments.Store) http.HandlerFunc {
 		})
 		if err != nil {
 			switch {
+			case errors.Is(err, garments.ErrInvalidID):
+				writeJSONError(writer, http.StatusBadRequest, "invalid_garment_id", "Use a valid garment id before saving.")
 			case errors.Is(err, garments.ErrNameRequired):
 				writeJSONError(writer, http.StatusBadRequest, "name_required", "Add a garment name before saving.")
 			case errors.Is(err, garments.ErrWashTemperatureOutOfRange):
 				writeJSONError(writer, http.StatusBadRequest, "invalid_wash_temperature", "Wash temperature must be between 0 and 95.")
+			case errors.Is(err, garments.ErrInvalidLabelImagePath):
+				writeJSONError(writer, http.StatusBadRequest, "invalid_label_image_path", "Label uploads must stay inside your private labels folder.")
 			default:
 				writeJSONError(writer, http.StatusInternalServerError, "garment_save_failed", "FreshCycle could not save that garment just yet.")
 			}

@@ -3,6 +3,7 @@ package garments
 import "context"
 
 type CreateInput struct {
+	ID               *string
 	UserID           string
 	Name             string
 	Category         *string

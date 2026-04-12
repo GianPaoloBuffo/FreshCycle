@@ -23,6 +23,7 @@ import {
   parseCareLabelPhoto,
 } from '@/features/add-garment/parseCareLabel';
 import { saveGarment, SavedGarment } from '@/features/add-garment/saveGarment';
+import { createSignedLabelImageUrl, uploadLabelImage } from '@/features/add-garment/uploadLabelImage';
 import { logAddGarmentError, logAddGarmentEvent } from '@/features/add-garment/observability';
 import { ParsedLabelResult, SelectedLabelPhoto } from '@/features/add-garment/types';
 import { AppScreen } from '@/components/AppScreen';
@@ -47,6 +48,7 @@ type GarmentReviewFormValues = {
 };
 
 type PreparedGarmentPayload = {
+  id: string;
   name: string;
   category: string | null;
   primary_color: string | null;
@@ -64,6 +66,7 @@ export function AddGarmentScreen() {
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const [preparedPayload, setPreparedPayload] = useState<PreparedGarmentPayload | null>(null);
   const [savedGarment, setSavedGarment] = useState<SavedGarment | null>(null);
+  const [savedLabelImageUrl, setSavedLabelImageUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<FlowStatus>('idle');
   const {
     control,
@@ -86,6 +89,7 @@ export function AddGarmentScreen() {
       setPreparedPayload(null);
       setReviewMessage(null);
       setSavedGarment(null);
+      setSavedLabelImageUrl(null);
       return;
     }
 
@@ -93,6 +97,7 @@ export function AddGarmentScreen() {
     setPreparedPayload(null);
     setReviewMessage(null);
     setSavedGarment(null);
+    setSavedLabelImageUrl(null);
   }, [parseResult, reset]);
 
   function resetFlow() {
@@ -102,6 +107,7 @@ export function AddGarmentScreen() {
     setReviewMessage(null);
     setPreparedPayload(null);
     setSavedGarment(null);
+    setSavedLabelImageUrl(null);
     setStatus('idle');
   }
 
@@ -156,13 +162,38 @@ export function AddGarmentScreen() {
 
   const submitReview = handleSubmit(async (values) => {
     try {
-      const payload = buildPreparedGarmentPayload(values);
+      if (!selectedPhoto || !session?.user.id) {
+        throw new Error('upload-failed');
+      }
+
+      logAddGarmentEvent('label_upload_started', {
+        source: selectedPhoto.source,
+        fileName: selectedPhoto.fileName,
+      });
+
+      const uploadedLabel = await uploadLabelImage(selectedPhoto, session.user.id);
+      logAddGarmentEvent('label_upload_succeeded', {
+        garmentId: uploadedLabel.garmentId,
+        objectPath: uploadedLabel.objectPath,
+      });
+
+      const payload = buildPreparedGarmentPayload(values, uploadedLabel);
       const garment = await saveGarment(payload, {
         accessToken: session?.access_token ?? null,
       });
 
       setPreparedPayload(payload);
       setSavedGarment(garment);
+      try {
+        const signedLabelImageUrl = await createSignedLabelImageUrl(uploadedLabel.objectPath);
+        setSavedLabelImageUrl(signedLabelImageUrl);
+      } catch (error) {
+        setSavedLabelImageUrl(null);
+        logAddGarmentError('garment_save_failed', error, {
+          reason: 'signed-url-generation-failed',
+          garmentId: garment.id,
+        });
+      }
       setReviewMessage('Garment saved to your FreshCycle wardrobe.');
       logAddGarmentEvent('review_form_submitted', {
         hasCategory: Boolean(payload.category),
@@ -172,9 +203,21 @@ export function AddGarmentScreen() {
       logAddGarmentEvent('garment_save_succeeded', {
         garmentId: garment.id,
         hasCategory: Boolean(garment.category),
+        hasLabelImagePath: Boolean(garment.label_image_path),
       });
     } catch (error) {
-      setReviewMessage(describeAddGarmentError(error instanceof Error && error.message === 'auth-required' ? 'auth-required' : 'save-failed'));
+      const code =
+        error instanceof Error && error.message === 'auth-required'
+          ? 'auth-required'
+          : error instanceof Error && error.message === 'upload-failed'
+            ? 'upload-failed'
+            : 'save-failed';
+
+      if (code === 'upload-failed') {
+        logAddGarmentError('label_upload_failed', error, {});
+      }
+
+      setReviewMessage(describeAddGarmentError(code));
       logAddGarmentError('garment_save_failed', error, {});
       logAddGarmentError('review_form_failed', error, {});
     }
@@ -368,8 +411,8 @@ export function AddGarmentScreen() {
               <View style={styles.reviewCard}>
                 <Text style={styles.sectionTitle}>Review garment details</Text>
                 <Text style={styles.sectionBody}>
-                  FreshCycle prefilled these fields from the parser output. Adjust anything that looks off before we
-                  wire the real save endpoint in the next slice.
+                  FreshCycle prefilled these fields from the parser output. Adjust anything that looks off, then we
+                  will upload the private label image and save the garment record together.
                 </Text>
 
                 <View style={styles.formGrid}>
@@ -618,6 +661,12 @@ export function AddGarmentScreen() {
                     <Text style={styles.successBody}>
                       Saved as <Text style={styles.successStrong}>{savedGarment.name}</Text> with id {savedGarment.id}.
                     </Text>
+                    {savedGarment.label_image_path && (
+                      <Text style={styles.successBody}>Stored label path: {savedGarment.label_image_path}</Text>
+                    )}
+                    {savedLabelImageUrl && (
+                      <Image source={{ uri: savedLabelImageUrl }} style={styles.savedLabelImage} />
+                    )}
                   </View>
                 )}
               </View>
@@ -666,7 +715,10 @@ function buildReviewDefaults(parseResult: ParsedLabelResult): GarmentReviewFormV
   };
 }
 
-function buildPreparedGarmentPayload(values: GarmentReviewFormValues): PreparedGarmentPayload {
+function buildPreparedGarmentPayload(
+  values: GarmentReviewFormValues,
+  uploadedLabel: { garmentId: string; objectPath: string }
+): PreparedGarmentPayload {
   const careInstructions = [
     ...values.careInstructionsText
       .split('\n')
@@ -676,12 +728,13 @@ function buildPreparedGarmentPayload(values: GarmentReviewFormValues): PreparedG
   ];
 
   return {
+    id: uploadedLabel.garmentId,
     name: values.name.trim(),
     category: emptyToNull(values.category),
     primary_color: emptyToNull(values.primaryColor),
     wash_temperature_c: values.washTemperatureC.trim() ? Number(values.washTemperatureC) : null,
     care_instructions: Array.from(new Set(careInstructions)),
-    label_image_path: null,
+    label_image_path: uploadedLabel.objectPath,
   };
 }
 
@@ -1152,5 +1205,11 @@ const styles = StyleSheet.create({
   },
   successStrong: {
     fontWeight: '700',
+  },
+  savedLabelImage: {
+    borderRadius: 18,
+    height: 220,
+    marginTop: 12,
+    width: '100%',
   },
 });

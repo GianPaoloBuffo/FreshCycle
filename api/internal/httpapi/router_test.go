@@ -150,11 +150,13 @@ func TestCreateGarmentRoute(t *testing.T) {
 	}
 
 	requestBody := bytes.NewBufferString(`{
+		"id":"29ce43cd-f095-476d-a7cb-1ee7850c14f1",
 		"name":"Navy Hoodie",
 		"category":"Knitwear",
 		"primary_color":"Navy",
 		"wash_temperature_c":30,
-		"care_instructions":["Machine washable","Do not bleach"]
+		"care_instructions":["Machine washable","Do not bleach"],
+		"label_image_path":"user-123/labels/29ce43cd-f095-476d-a7cb-1ee7850c14f1.jpg"
 	}`)
 	request := httptest.NewRequest(http.MethodPost, "/garments", requestBody)
 	request.Header.Set("Content-Type", "application/json")
@@ -172,6 +174,14 @@ func TestCreateGarmentRoute(t *testing.T) {
 		t.Fatalf("expected user id user-123, got %s", store.last.UserID)
 	}
 
+	if store.last.ID == nil || *store.last.ID != "29ce43cd-f095-476d-a7cb-1ee7850c14f1" {
+		t.Fatalf("expected garment id to be forwarded to the store, got %#v", store.last.ID)
+	}
+
+	if store.last.LabelImagePath == nil || *store.last.LabelImagePath != "user-123/labels/29ce43cd-f095-476d-a7cb-1ee7850c14f1.jpg" {
+		t.Fatalf("expected label image path to be forwarded to the store, got %#v", store.last.LabelImagePath)
+	}
+
 	var response garments.Garment
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -179,5 +189,30 @@ func TestCreateGarmentRoute(t *testing.T) {
 
 	if response.ID != "garment-123" {
 		t.Fatalf("expected garment id garment-123, got %s", response.ID)
+	}
+}
+
+func TestCreateGarmentRouteRejectsInvalidLabelImagePath(t *testing.T) {
+	t.Parallel()
+
+	requestBody := bytes.NewBufferString(`{
+		"id":"29ce43cd-f095-476d-a7cb-1ee7850c14f1",
+		"name":"Navy Hoodie",
+		"label_image_path":"someone-else/labels/29ce43cd-f095-476d-a7cb-1ee7850c14f1.jpg"
+	}`)
+	request := httptest.NewRequest(http.MethodPost, "/garments", requestBody)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"invalid_label_image_path"`)) {
+		t.Fatalf("expected invalid_label_image_path response body, got %s", recorder.Body.String())
 	}
 }

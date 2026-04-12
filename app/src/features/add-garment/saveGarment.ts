@@ -1,6 +1,7 @@
 import { getAppEnv } from '@/lib/env';
 
 export type SaveGarmentPayload = {
+  id: string;
   name: string;
   category: string | null;
   primary_color: string | null;
