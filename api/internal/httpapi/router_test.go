@@ -2,17 +2,28 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
 	"testing"
 
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/auth"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
 )
 
 var testAllowedOrigins = []string{"http://localhost:19006", "https://*.vercel.app"}
+
+type stubAuthValidator struct {
+	user auth.User
+	err  error
+}
+
+func (s stubAuthValidator) ValidateAccessToken(_ context.Context, _ string) (auth.User, error) {
+	return s.user, s.err
+}
 
 func TestHealthRoute(t *testing.T) {
 	t.Parallel()
@@ -20,7 +31,7 @@ func TestHealthRoute(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
 
-	httpapi.NewRouter(labelparser.NewStubParser(), testAllowedOrigins).ServeHTTP(recorder, request)
+	httpapi.NewRouter(labelparser.NewStubParser(), testAllowedOrigins, nil).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
@@ -62,7 +73,9 @@ func TestParseLabelRoute(t *testing.T) {
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	recorder := httptest.NewRecorder()
 
-	httpapi.NewRouter(labelparser.NewStubParser(), testAllowedOrigins).ServeHTTP(recorder, request)
+	httpapi.NewRouter(labelparser.NewStubParser(), testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
@@ -81,7 +94,7 @@ func TestParseLabelRouteSetsCORSHeadersForVercelPreviewOrigins(t *testing.T) {
 	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
 	recorder := httptest.NewRecorder()
 
-	httpapi.NewRouter(labelparser.NewStubParser(), testAllowedOrigins).ServeHTTP(recorder, request)
+	httpapi.NewRouter(labelparser.NewStubParser(), testAllowedOrigins, nil).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("expected status %d, got %d", http.StatusNoContent, recorder.Code)
@@ -89,5 +102,24 @@ func TestParseLabelRouteSetsCORSHeadersForVercelPreviewOrigins(t *testing.T) {
 
 	if origin := recorder.Header().Get("Access-Control-Allow-Origin"); origin != "https://app-oqzl4uwro-gpbuffo-5604s-projects.vercel.app" {
 		t.Fatalf("expected reflected origin header, got %q", origin)
+	}
+}
+
+func TestParseLabelRouteRejectsMissingAuth(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodPost, "/garments/parse-label", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), testAllowedOrigins, stubAuthValidator{
+		err: auth.ErrMissingAccessToken,
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"auth_required"`)) {
+		t.Fatalf("expected auth_required response body, got %s", recorder.Body.String())
 	}
 }

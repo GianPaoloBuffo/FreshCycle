@@ -84,7 +84,7 @@ Recommended Render steps:
 
 1. Create a new Blueprint or Web Service from this repository.
 2. Use the `freshcycle-api` service defined in [render.yaml](/Users/gp-macbook/Projects/FreshCycle/render.yaml).
-3. Set `SUPABASE_DB_URL` in Render.
+3. Set `SUPABASE_DB_URL`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY` in Render.
 4. Keep `LABEL_PARSER_PROVIDER=stub` for the first smoke test.
 5. Once the service is live, copy its URL into Vercel as `EXPO_PUBLIC_API_BASE_URL`.
 6. Redeploy the Vercel app.

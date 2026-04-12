@@ -10,6 +10,7 @@ type ParseCareLabelDeps = {
   apiBaseUrl?: string | null;
   fetchImpl?: FetchLike;
   platform?: string;
+  accessToken?: string | null;
 };
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -60,6 +61,7 @@ export async function parseCareLabelPhoto(
   const fetchImpl = deps.fetchImpl ?? ((input, init) => fetch(input, init));
   const apiBaseUrl = deps.apiBaseUrl ?? getAppEnv().apiBaseUrl;
   const platform = deps.platform ?? inferRuntimePlatform();
+  const accessToken = deps.accessToken ?? null;
   const startedAt = now();
 
   logAddGarmentEvent('label_parse_started', {
@@ -73,6 +75,7 @@ export async function parseCareLabelPhoto(
           apiBaseUrl,
           fetchImpl,
           platform,
+          accessToken,
         })
       : null;
 
@@ -105,6 +108,9 @@ export async function parseCareLabelPhoto(
       source: photo.source,
       fileName: photo.fileName,
     });
+    if (error instanceof AddGarmentActionError) {
+      throw error;
+    }
     throw new AddGarmentActionError('processing-failed');
   }
 }
@@ -119,6 +125,8 @@ export function describeAddGarmentError(code: AddGarmentErrorCode) {
       return 'Camera capture is not available on this device. Choose a photo from your library instead.';
     case 'selection-empty':
       return 'No image was returned by the picker. Try again with a clear care-label photo.';
+    case 'auth-required':
+      return 'Your FreshCycle session needs attention before we can call the API. Sign in again and retry.';
     case 'processing-failed':
     default:
       return 'FreshCycle could not process that label just yet. Try another photo or retry in a moment.';
@@ -168,13 +176,25 @@ async function parseViaAPI(
     apiBaseUrl: string;
     fetchImpl: FetchLike;
     platform: string;
+    accessToken: string | null;
   }
 ) {
+  if (!deps.accessToken) {
+    throw new AddGarmentActionError('auth-required');
+  }
+
   const requestBody = await buildMultipartBody(photo, deps);
   const response = await deps.fetchImpl(`${deps.apiBaseUrl.replace(/\/$/, '')}/garments/parse-label`, {
     method: 'POST',
     body: requestBody,
+    headers: {
+      Authorization: `Bearer ${deps.accessToken}`,
+    },
   });
+
+  if (response.status === 401) {
+    throw new AddGarmentActionError('auth-required');
+  }
 
   if (!response.ok) {
     throw new AddGarmentActionError('processing-failed');

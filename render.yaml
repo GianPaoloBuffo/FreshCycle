@@ -18,5 +18,9 @@ services:
         value: http://localhost:19006,http://127.0.0.1:19006,http://localhost:8081,https://*.vercel.app
       - key: SUPABASE_DB_URL
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
       - key: OPENAI_API_KEY
         sync: false

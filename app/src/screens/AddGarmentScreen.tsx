@@ -68,7 +68,9 @@ export function AddGarmentScreen() {
       setSelectedPhoto(nextPhoto);
       setStatus('processing');
 
-      const nextResult = await parseCareLabelPhoto(nextPhoto);
+      const nextResult = await parseCareLabelPhoto(nextPhoto, {
+        accessToken: session?.access_token ?? null,
+      });
 
       setParseResult(nextResult);
       setStatus('ready');

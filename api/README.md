@@ -36,10 +36,17 @@ The API listens on `API_PORT`, defaulting to `8080`.
 - `OPENAI_MODEL`: optional, defaults to `gpt-5-mini`
 - `OPENAI_BASE_URL`: optional override for the Responses API URL
 - `API_ALLOWED_ORIGINS`: optional comma-separated browser origins allowed to call the API; defaults to local Expo web origins plus `https://*.vercel.app`
+- `SUPABASE_URL`: required for validating Supabase access tokens on protected API routes
+- `SUPABASE_SECRET_KEY`: required for validating Supabase access tokens on protected API routes
 
 ## Parse-label endpoint
 
-`POST /garments/parse-label` expects `multipart/form-data` with an `image` field. The response shape preserves the garment parsing contract used for the app review step:
+`POST /garments/parse-label` expects:
+
+- `Authorization: Bearer <supabase-access-token>`
+- `multipart/form-data` with an `image` field
+
+The response shape preserves the garment parsing contract used for the app review step:
 
 ```json
 {

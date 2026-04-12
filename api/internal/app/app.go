@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/auth"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/config"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
@@ -29,7 +30,8 @@ func New(cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	router := httpapi.NewRouter(parser, cfg.AllowedOrigins)
+	validator := auth.NewValidator(cfg)
+	router := httpapi.NewRouter(parser, cfg.AllowedOrigins, validator)
 
 	return &App{
 		config: cfg,

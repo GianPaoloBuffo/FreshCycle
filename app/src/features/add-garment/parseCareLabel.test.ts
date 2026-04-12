@@ -99,6 +99,7 @@ describe('parseCareLabelPhoto', () => {
         fetchImpl: fetchImpl as unknown as typeof fetch,
         now,
         platform: 'web',
+        accessToken: 'token-123',
       }
     );
 
@@ -107,11 +108,36 @@ describe('parseCareLabelPhoto', () => {
       'https://api.example.com/garments/parse-label',
       expect.objectContaining({
         method: 'POST',
+        headers: {
+          Authorization: 'Bearer token-123',
+        },
       })
     );
     expect(result.preview.garmentName).toBe('Navy Hoodie');
     expect(result.preview.careSummary).toContain('Machine wash up to 30C');
     expect(result.preview.notes[0]).toContain('80% cotton');
+  });
+
+  it('requires an access token before calling the API parser', async () => {
+    await expect(
+      parseCareLabelPhoto(
+        {
+          uri: 'https://example.com/hoodie.png',
+          fileName: 'hoodie.png',
+          mimeType: 'image/png',
+          width: 1200,
+          height: 1600,
+          fileSize: 8192,
+          source: 'library',
+        },
+        {
+          apiBaseUrl: 'https://api.example.com',
+          platform: 'web',
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'auth-required',
+    });
   });
 });
 
@@ -125,5 +151,9 @@ describe('describeAddGarmentError', () => {
 
     expect(error.code).toBe('processing-failed');
     expect(error.message).toBe(describeAddGarmentError('processing-failed'));
+  });
+
+  it('returns a session-specific guidance message when api auth is missing', () => {
+    expect(describeAddGarmentError('auth-required')).toContain('Sign in again');
   });
 });

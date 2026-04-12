@@ -29,4 +29,5 @@ export type AddGarmentErrorCode =
   | 'photo-library-permission-denied'
   | 'camera-unavailable'
   | 'selection-empty'
+  | 'auth-required'
   | 'processing-failed';

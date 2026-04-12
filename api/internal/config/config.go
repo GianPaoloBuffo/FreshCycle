@@ -17,6 +17,8 @@ type Config struct {
 	OpenAIModel         string
 	OpenAIBaseURL       string
 	AllowedOrigins      []string
+	SupabaseProjectURL  string
+	SupabaseSecretKey   string
 }
 
 func Load() (Config, error) {
@@ -42,6 +44,8 @@ func LoadFromMap(values map[string]string) (Config, error) {
 		OpenAIModel:         getEnvFromLookup(lookup, "OPENAI_MODEL", "gpt-5-mini"),
 		OpenAIBaseURL:       getEnvFromLookup(lookup, "OPENAI_BASE_URL", ""),
 		AllowedOrigins:      splitCSVEnv(getEnvFromLookup(lookup, "API_ALLOWED_ORIGINS", defaultAllowedOrigins)),
+		SupabaseProjectURL:  getEnvFromLookup(lookup, "SUPABASE_URL", ""),
+		SupabaseSecretKey:   getEnvFromLookup(lookup, "SUPABASE_SECRET_KEY", ""),
 	}
 
 	if err := cfg.Validate(); err != nil {

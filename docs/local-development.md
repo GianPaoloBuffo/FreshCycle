@@ -124,6 +124,8 @@ For the Phase 2 parser flow, these API env vars are useful:
 - `LABEL_PARSER_PROVIDER=openai` enables the real parser endpoint.
 - `OPENAI_API_KEY` is required when using the OpenAI parser.
 - `OPENAI_MODEL` optionally overrides the default `gpt-5-mini` vision model.
+- `SUPABASE_URL` points the API at the Supabase Auth service for JWT validation.
+- `SUPABASE_SECRET_KEY` lets the API validate Supabase access tokens on protected routes.
 
 To route the Expo app through the API-backed parser instead of the local fallback stub, set:
 
