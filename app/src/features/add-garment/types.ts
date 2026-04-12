@@ -18,7 +18,24 @@ export type ParsedLabelPreview = {
   notes: string[];
 };
 
+export type ParsedGarmentFields = {
+  nameSuggestion: string;
+  category: string;
+  primaryColor: string;
+  washTemperatureC: number | null;
+  careInstructions: string[];
+  machineWashable: boolean;
+  tumbleDry: boolean;
+  dryCleanOnly: boolean;
+  ironAllowed: boolean;
+  ironTemp: 'low' | 'medium' | 'high' | null;
+  bleachAllowed: boolean;
+  fabricNotes: string[];
+  rawLabelText: string;
+};
+
 export type ParsedLabelResult = {
+  parsed: ParsedGarmentFields;
   preview: ParsedLabelPreview;
   durationMs: number;
   completedAt: string;
@@ -30,4 +47,5 @@ export type AddGarmentErrorCode =
   | 'camera-unavailable'
   | 'selection-empty'
   | 'auth-required'
+  | 'save-failed'
   | 'processing-failed';

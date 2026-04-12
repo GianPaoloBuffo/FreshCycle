@@ -6,6 +6,7 @@ import (
 
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/auth"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/config"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/garments"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/postgres"
@@ -31,7 +32,8 @@ func New(cfg config.Config) (*App, error) {
 	}
 
 	validator := auth.NewValidator(cfg)
-	router := httpapi.NewRouter(parser, cfg.AllowedOrigins, validator)
+	garmentStore := garments.NewPostgresStore(db)
+	router := httpapi.NewRouter(parser, garmentStore, cfg.AllowedOrigins, validator)
 
 	return &App{
 		config: cfg,

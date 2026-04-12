@@ -4,7 +4,11 @@ type AddGarmentEventName =
   | 'label_selection_failed'
   | 'label_parse_started'
   | 'label_parse_succeeded'
-  | 'label_parse_failed';
+  | 'label_parse_failed'
+  | 'review_form_submitted'
+  | 'review_form_failed'
+  | 'garment_save_succeeded'
+  | 'garment_save_failed';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 

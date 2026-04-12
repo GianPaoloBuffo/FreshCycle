@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/auth"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/garments"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi/handlers"
 	httpmiddleware "github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi/middleware"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
@@ -12,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(parser labelparser.Parser, allowedOrigins []string, validator auth.Validator) http.Handler {
+func NewRouter(parser labelparser.Parser, garmentStore garments.Store, allowedOrigins []string, validator auth.Validator) http.Handler {
 	router := chi.NewRouter()
 
 	router.Use(middleware.RequestID)
@@ -26,6 +27,7 @@ func NewRouter(parser labelparser.Parser, allowedOrigins []string, validator aut
 
 	router.Get("/health", handlers.Health)
 	router.With(httpmiddleware.RequireAuth(validator)).Post("/garments/parse-label", handlers.ParseLabel(parser))
+	router.With(httpmiddleware.RequireAuth(validator)).Post("/garments", handlers.CreateGarment(garmentStore))
 
 	return router
 }

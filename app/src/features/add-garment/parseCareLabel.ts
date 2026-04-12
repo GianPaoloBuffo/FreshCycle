@@ -1,7 +1,12 @@
 import { ImagePickerAsset } from 'expo-image-picker';
 
 import { logAddGarmentError, logAddGarmentEvent } from '@/features/add-garment/observability';
-import { AddGarmentErrorCode, ParsedLabelResult, SelectedLabelPhoto } from '@/features/add-garment/types';
+import {
+  AddGarmentErrorCode,
+  ParsedGarmentFields,
+  ParsedLabelResult,
+  SelectedLabelPhoto,
+} from '@/features/add-garment/types';
 import { getAppEnv } from '@/lib/env';
 
 type ParseCareLabelDeps = {
@@ -85,11 +90,13 @@ export async function parseCareLabelPhoto(
 
     const result: ParsedLabelResult = apiResult
       ? {
+          parsed: buildParsedFieldsFromAPI(apiResult),
           preview: buildPreviewFromAPI(apiResult),
           durationMs: now() - startedAt,
           completedAt: new Date(now()).toISOString(),
         }
       : {
+          parsed: buildStubParsedFields(photo),
           preview: buildStubPreview(photo),
           durationMs: now() - startedAt,
           completedAt: new Date(now()).toISOString(),
@@ -127,6 +134,8 @@ export function describeAddGarmentError(code: AddGarmentErrorCode) {
       return 'No image was returned by the picker. Try again with a clear care-label photo.';
     case 'auth-required':
       return 'Your FreshCycle session needs attention before we can call the API. Sign in again and retry.';
+    case 'save-failed':
+      return 'FreshCycle could not save that garment yet. Retry in a moment.';
     case 'processing-failed':
     default:
       return 'FreshCycle could not process that label just yet. Try another photo or retry in a moment.';
@@ -151,6 +160,26 @@ function buildStubPreview(photo: SelectedLabelPhoto): ParsedLabelResult['preview
   };
 }
 
+function buildStubParsedFields(photo: SelectedLabelPhoto): ParsedGarmentFields {
+  const nameSuggestion = titleize(sanitizeFileStem(photo.fileName ?? inferFileNameFromUri(photo.uri)) || 'care label upload');
+
+  return {
+    nameSuggestion,
+    category: inferCategoryFromName(nameSuggestion),
+    primaryColor: '',
+    washTemperatureC: 30,
+    careInstructions: ['Machine wash cold', 'Do not bleach', 'Cool iron if needed'],
+    machineWashable: true,
+    tumbleDry: false,
+    dryCleanOnly: false,
+    ironAllowed: true,
+    ironTemp: 'low',
+    bleachAllowed: false,
+    fabricNotes: ['Cotton blend', 'Review label image for exact fabric percentages'],
+    rawLabelText: 'Machine wash cold. Do not bleach. Tumble dry low. Cool iron if needed.',
+  };
+}
+
 function buildPreviewFromAPI(result: ParseLabelApiResponse): ParsedLabelResult['preview'] {
   const notes = [
     ...result.fabric_notes.map((note) => note.trim()).filter(Boolean),
@@ -167,6 +196,24 @@ function buildPreviewFromAPI(result: ParseLabelApiResponse): ParsedLabelResult['
     careSummary: buildCareSummary(result),
     confidenceLabel: result.raw_label_text.trim() ? 'Mostly confident' : 'Review needed',
     notes,
+  };
+}
+
+function buildParsedFieldsFromAPI(result: ParseLabelApiResponse): ParsedGarmentFields {
+  return {
+    nameSuggestion: result.name_suggestion.trim() || 'Needs review',
+    category: inferCategoryFromName(result.name_suggestion),
+    primaryColor: '',
+    washTemperatureC: result.wash_temp_max,
+    careInstructions: buildCareInstructions(result),
+    machineWashable: result.machine_washable,
+    tumbleDry: result.tumble_dry,
+    dryCleanOnly: result.dry_clean_only,
+    ironAllowed: result.iron_allowed,
+    ironTemp: result.iron_temp,
+    bleachAllowed: result.bleach_allowed,
+    fabricNotes: result.fabric_notes,
+    rawLabelText: result.raw_label_text,
   };
 }
 
@@ -267,6 +314,56 @@ function buildInstructionSummary(result: ParseLabelApiResponse) {
   }
 
   return instructions.length ? `Detected care instructions: ${instructions.join(', ')}.` : '';
+}
+
+function buildCareInstructions(result: ParseLabelApiResponse) {
+  const instructions = [];
+
+  if (result.machine_washable) {
+    instructions.push(result.wash_temp_max ? `Machine wash up to ${result.wash_temp_max}C` : 'Machine washable');
+  }
+  if (result.dry_clean_only) {
+    instructions.push('Dry clean only');
+  }
+  if (result.tumble_dry) {
+    instructions.push('Tumble dry allowed');
+  } else {
+    instructions.push('Avoid tumble drying');
+  }
+  if (result.iron_allowed) {
+    instructions.push(result.iron_temp ? `Iron on ${result.iron_temp} heat` : 'Iron allowed');
+  } else {
+    instructions.push('Do not iron');
+  }
+  if (result.bleach_allowed) {
+    instructions.push('Bleach allowed');
+  } else {
+    instructions.push('Do not bleach');
+  }
+
+  return instructions;
+}
+
+function inferCategoryFromName(name: string) {
+  const normalized = name.toLowerCase();
+
+  if (normalized.includes('shirt') || normalized.includes('blouse')) {
+    return 'Tops';
+  }
+  if (normalized.includes('hoodie') || normalized.includes('sweater') || normalized.includes('jumper')) {
+    return 'Knitwear';
+  }
+  if (normalized.includes('jean') || normalized.includes('pant') || normalized.includes('trouser')) {
+    return 'Bottoms';
+  }
+  if (normalized.includes('dress')) {
+    return 'Dresses';
+  }
+  if (normalized.includes('jacket') || normalized.includes('coat')) {
+    return 'Outerwear';
+  }
+
+  return '';
 }
 
 function inferRuntimePlatform() {

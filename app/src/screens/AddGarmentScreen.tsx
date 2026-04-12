@@ -1,6 +1,7 @@
 import { Link } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
 import {
   ActivityIndicator,
   Image,
@@ -8,7 +9,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -19,6 +22,7 @@ import {
   describeAddGarmentError,
   parseCareLabelPhoto,
 } from '@/features/add-garment/parseCareLabel';
+import { saveGarment, SavedGarment } from '@/features/add-garment/saveGarment';
 import { logAddGarmentError, logAddGarmentEvent } from '@/features/add-garment/observability';
 import { ParsedLabelResult, SelectedLabelPhoto } from '@/features/add-garment/types';
 import { AppScreen } from '@/components/AppScreen';
@@ -26,6 +30,30 @@ import { palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 
 type FlowStatus = 'idle' | 'selecting' | 'processing' | 'ready';
+type GarmentReviewFormValues = {
+  name: string;
+  category: string;
+  primaryColor: string;
+  washTemperatureC: string;
+  careInstructionsText: string;
+  fabricNotesText: string;
+  rawLabelText: string;
+  machineWashable: boolean;
+  tumbleDry: boolean;
+  dryCleanOnly: boolean;
+  ironAllowed: boolean;
+  ironTemp: '' | 'low' | 'medium' | 'high';
+  bleachAllowed: boolean;
+};
+
+type PreparedGarmentPayload = {
+  name: string;
+  category: string | null;
+  primary_color: string | null;
+  wash_temperature_c: number | null;
+  care_instructions: string[];
+  label_image_path: string | null;
+};
 
 export function AddGarmentScreen() {
   const { authReady, loading, session } = useAuth();
@@ -33,17 +61,47 @@ export function AddGarmentScreen() {
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedLabelPhoto | null>(null);
   const [parseResult, setParseResult] = useState<ParsedLabelResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const [preparedPayload, setPreparedPayload] = useState<PreparedGarmentPayload | null>(null);
+  const [savedGarment, setSavedGarment] = useState<SavedGarment | null>(null);
   const [status, setStatus] = useState<FlowStatus>('idle');
+  const {
+    control,
+    formState: { errors, isSubmitting },
+    handleSubmit,
+    reset,
+  } = useForm<GarmentReviewFormValues>({
+    defaultValues: createInitialReviewDefaults(),
+  });
 
   const canUseCamera = true;
-  const isBusy = status === 'selecting' || status === 'processing';
+  const isBusy = status === 'selecting' || status === 'processing' || isSubmitting;
   const stackButtons = width < 720;
   const hasCapturedPhoto = Boolean(selectedPhoto);
+  const showReviewForm = Boolean(parseResult);
+
+  useEffect(() => {
+    if (!parseResult) {
+      reset(createInitialReviewDefaults());
+      setPreparedPayload(null);
+      setReviewMessage(null);
+      setSavedGarment(null);
+      return;
+    }
+
+    reset(buildReviewDefaults(parseResult));
+    setPreparedPayload(null);
+    setReviewMessage(null);
+    setSavedGarment(null);
+  }, [parseResult, reset]);
 
   function resetFlow() {
     setSelectedPhoto(null);
     setParseResult(null);
     setErrorMessage(null);
+    setReviewMessage(null);
+    setPreparedPayload(null);
+    setSavedGarment(null);
     setStatus('idle');
   }
 
@@ -67,6 +125,9 @@ export function AddGarmentScreen() {
 
       setSelectedPhoto(nextPhoto);
       setStatus('processing');
+      setReviewMessage(null);
+      setPreparedPayload(null);
+      setSavedGarment(null);
 
       const nextResult = await parseCareLabelPhoto(nextPhoto, {
         accessToken: session?.access_token ?? null,
@@ -92,6 +153,32 @@ export function AddGarmentScreen() {
       });
     }
   }
+
+  const submitReview = handleSubmit(async (values) => {
+    try {
+      const payload = buildPreparedGarmentPayload(values);
+      const garment = await saveGarment(payload, {
+        accessToken: session?.access_token ?? null,
+      });
+
+      setPreparedPayload(payload);
+      setSavedGarment(garment);
+      setReviewMessage('Garment saved to your FreshCycle wardrobe.');
+      logAddGarmentEvent('review_form_submitted', {
+        hasCategory: Boolean(payload.category),
+        careInstructionCount: payload.care_instructions.length,
+        washTemperatureSet: payload.wash_temperature_c !== null,
+      });
+      logAddGarmentEvent('garment_save_succeeded', {
+        garmentId: garment.id,
+        hasCategory: Boolean(garment.category),
+      });
+    } catch (error) {
+      setReviewMessage(describeAddGarmentError(error instanceof Error && error.message === 'auth-required' ? 'auth-required' : 'save-failed'));
+      logAddGarmentError('garment_save_failed', error, {});
+      logAddGarmentError('review_form_failed', error, {});
+    }
+  });
 
   return (
     <AppScreen padded={false}>
@@ -235,49 +322,430 @@ export function AddGarmentScreen() {
         )}
 
         {parseResult && (
-          <View style={styles.resultCard}>
-            <Text style={styles.sectionTitle}>Processing preview</Text>
-            <Text style={styles.resultName}>{parseResult.preview.garmentName}</Text>
-            <Text style={styles.resultMeta}>
-              {parseResult.preview.suggestedCategory} · {parseResult.preview.confidenceLabel}
-            </Text>
-            <Text style={styles.resultBody}>{parseResult.preview.careSummary}</Text>
-            {parseResult.preview.notes.map((note) => (
-              <Text key={note} style={styles.noteItem}>
-                {`\u2022 ${note}`}
+          <>
+            <View style={styles.resultCard}>
+              <Text style={styles.sectionTitle}>Processing preview</Text>
+              <Text style={styles.resultName}>{parseResult.preview.garmentName}</Text>
+              <Text style={styles.resultMeta}>
+                {parseResult.preview.suggestedCategory} · {parseResult.preview.confidenceLabel}
               </Text>
-            ))}
-            <Text style={styles.metaFootnote}>
-              Last processed in {parseResult.durationMs}ms at {new Date(parseResult.completedAt).toLocaleTimeString()}.
-            </Text>
-            <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
-              <Pressable
-                accessibilityLabel="Capture a different label photo"
-                disabled={isBusy || !session}
-                onPress={() => void handleSourceSelection('camera')}
-                style={[
-                  styles.primaryButton,
-                  stackButtons && styles.fullWidthButton,
-                  (isBusy || !session) && styles.buttonDisabled,
-                ]}>
-                <Text style={styles.primaryButtonText}>Retake with camera</Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Choose a different label photo from the library"
-                disabled={isBusy || !session}
-                onPress={() => void handleSourceSelection('library')}
-                style={[
-                  styles.secondaryButton,
-                  stackButtons && styles.fullWidthButton,
-                  (isBusy || !session) && styles.buttonDisabled,
-                ]}>
-                <Text style={styles.secondaryButtonText}>Pick another photo</Text>
-              </Pressable>
+              <Text style={styles.resultBody}>{parseResult.preview.careSummary}</Text>
+              {parseResult.preview.notes.map((note) => (
+                <Text key={note} style={styles.noteItem}>
+                  {`\u2022 ${note}`}
+                </Text>
+              ))}
+              <Text style={styles.metaFootnote}>
+                Last processed in {parseResult.durationMs}ms at {new Date(parseResult.completedAt).toLocaleTimeString()}.
+              </Text>
+              <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
+                <Pressable
+                  accessibilityLabel="Capture a different label photo"
+                  disabled={isBusy || !session}
+                  onPress={() => void handleSourceSelection('camera')}
+                  style={[
+                    styles.primaryButton,
+                    stackButtons && styles.fullWidthButton,
+                    (isBusy || !session) && styles.buttonDisabled,
+                  ]}>
+                  <Text style={styles.primaryButtonText}>Retake with camera</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Choose a different label photo from the library"
+                  disabled={isBusy || !session}
+                  onPress={() => void handleSourceSelection('library')}
+                  style={[
+                    styles.secondaryButton,
+                    stackButtons && styles.fullWidthButton,
+                    (isBusy || !session) && styles.buttonDisabled,
+                  ]}>
+                  <Text style={styles.secondaryButtonText}>Pick another photo</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+
+            {showReviewForm && (
+              <View style={styles.reviewCard}>
+                <Text style={styles.sectionTitle}>Review garment details</Text>
+                <Text style={styles.sectionBody}>
+                  FreshCycle prefilled these fields from the parser output. Adjust anything that looks off before we
+                  wire the real save endpoint in the next slice.
+                </Text>
+
+                <View style={styles.formGrid}>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Garment name</Text>
+                    <Controller
+                      control={control}
+                      name="name"
+                      rules={{
+                        required: 'Add a garment name before saving.',
+                      }}
+                      render={({ field: { onBlur, onChange, value } }) => (
+                        <TextInput
+                          onBlur={onBlur}
+                          onChangeText={onChange}
+                          placeholder="e.g. Navy Hoodie"
+                          placeholderTextColor="#77887a"
+                          style={[styles.textInput, errors.name && styles.textInputError]}
+                          value={value}
+                        />
+                      )}
+                    />
+                    {errors.name && <Text style={styles.validationText}>{errors.name.message}</Text>}
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Category</Text>
+                    <Controller
+                      control={control}
+                      name="category"
+                      render={({ field: { onBlur, onChange, value } }) => (
+                        <TextInput
+                          onBlur={onBlur}
+                          onChangeText={onChange}
+                          placeholder="Tops, Knitwear, Outerwear..."
+                          placeholderTextColor="#77887a"
+                          style={styles.textInput}
+                          value={value}
+                        />
+                      )}
+                    />
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Primary color</Text>
+                    <Controller
+                      control={control}
+                      name="primaryColor"
+                      render={({ field: { onBlur, onChange, value } }) => (
+                        <TextInput
+                          onBlur={onBlur}
+                          onChangeText={onChange}
+                          placeholder="Optional"
+                          placeholderTextColor="#77887a"
+                          style={styles.textInput}
+                          value={value}
+                        />
+                      )}
+                    />
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Wash temperature (C)</Text>
+                    <Controller
+                      control={control}
+                      name="washTemperatureC"
+                      rules={{
+                        validate: (value) => {
+                          if (!value.trim()) {
+                            return true;
+                          }
+
+                          const parsedValue = Number(value);
+                          if (!Number.isInteger(parsedValue) || parsedValue < 0 || parsedValue > 95) {
+                            return 'Use a whole number between 0 and 95.';
+                          }
+
+                          return true;
+                        },
+                      }}
+                      render={({ field: { onBlur, onChange, value } }) => (
+                        <TextInput
+                          keyboardType="number-pad"
+                          onBlur={onBlur}
+                          onChangeText={onChange}
+                          placeholder="Optional"
+                          placeholderTextColor="#77887a"
+                          style={[styles.textInput, errors.washTemperatureC && styles.textInputError]}
+                          value={value}
+                        />
+                      )}
+                    />
+                    {errors.washTemperatureC && (
+                      <Text style={styles.validationText}>{errors.washTemperatureC.message}</Text>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.toggleGrid}>
+                  <ControlledSwitch control={control} name="machineWashable" label="Machine washable" />
+                  <ControlledSwitch control={control} name="tumbleDry" label="Tumble dry allowed" />
+                  <ControlledSwitch control={control} name="dryCleanOnly" label="Dry clean only" />
+                  <ControlledSwitch control={control} name="ironAllowed" label="Iron allowed" />
+                  <ControlledSwitch control={control} name="bleachAllowed" label="Bleach allowed" />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Iron temperature</Text>
+                  <Controller
+                    control={control}
+                    name="ironTemp"
+                    render={({ field: { value, onChange } }) => (
+                      <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
+                        {['', 'low', 'medium', 'high'].map((option) => {
+                          const label = option === '' ? 'Unset' : option.charAt(0).toUpperCase() + option.slice(1);
+                          const isSelected = value === option;
+
+                          return (
+                            <Pressable
+                              key={option || 'unset'}
+                              onPress={() => onChange(option)}
+                              style={[
+                                styles.choiceChip,
+                                isSelected && styles.choiceChipSelected,
+                                stackButtons && styles.fullWidthButton,
+                              ]}>
+                              <Text style={[styles.choiceChipText, isSelected && styles.choiceChipTextSelected]}>
+                                {label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Care instructions</Text>
+                  <Controller
+                    control={control}
+                    name="careInstructionsText"
+                    render={({ field: { onBlur, onChange, value } }) => (
+                      <TextInput
+                        multiline
+                        numberOfLines={4}
+                        onBlur={onBlur}
+                        onChangeText={onChange}
+                        placeholder="One instruction per line"
+                        placeholderTextColor="#77887a"
+                        style={[styles.textInput, styles.textArea]}
+                        value={value}
+                      />
+                    )}
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Fabric notes</Text>
+                  <Controller
+                    control={control}
+                    name="fabricNotesText"
+                    render={({ field: { onBlur, onChange, value } }) => (
+                      <TextInput
+                        multiline
+                        numberOfLines={3}
+                        onBlur={onBlur}
+                        onChangeText={onChange}
+                        placeholder="One note per line"
+                        placeholderTextColor="#77887a"
+                        style={[styles.textInput, styles.textArea]}
+                        value={value}
+                      />
+                    )}
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Detected label text</Text>
+                  <Controller
+                    control={control}
+                    name="rawLabelText"
+                    render={({ field: { onBlur, onChange, value } }) => (
+                      <TextInput
+                        multiline
+                        numberOfLines={4}
+                        onBlur={onBlur}
+                        onChangeText={onChange}
+                        placeholder="Detected OCR text"
+                        placeholderTextColor="#77887a"
+                        style={[styles.textInput, styles.textArea]}
+                        value={value}
+                      />
+                    )}
+                  />
+                </View>
+
+                <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
+                  <Pressable
+                    accessibilityLabel="Save garment details"
+                    disabled={!session || isBusy}
+                    onPress={() => void submitReview()}
+                    style={[
+                      styles.primaryButton,
+                      stackButtons && styles.fullWidthButton,
+                      (!session || isBusy) && styles.buttonDisabled,
+                    ]}>
+                    <Text style={styles.primaryButtonText}>Save garment details</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Reset garment review defaults"
+                    disabled={!parseResult || isBusy}
+                    onPress={() => {
+                      if (!parseResult) {
+                        return;
+                      }
+
+                      reset(buildReviewDefaults(parseResult));
+                      setPreparedPayload(null);
+                      setReviewMessage(null);
+                    }}
+                    style={[
+                      styles.secondaryButton,
+                      stackButtons && styles.fullWidthButton,
+                      (!parseResult || isBusy) && styles.buttonDisabled,
+                    ]}>
+                    <Text style={styles.secondaryButtonText}>Reset review fields</Text>
+                  </Pressable>
+                </View>
+
+                {reviewMessage && <Text style={styles.reviewMessage}>{reviewMessage}</Text>}
+
+                {preparedPayload && (
+                  <View style={styles.payloadCard}>
+                    <Text style={styles.payloadTitle}>Saved garment payload</Text>
+                    <Text style={styles.payloadBody}>
+                      This is the garment object FreshCycle just sent to the save endpoint.
+                    </Text>
+                    <Text style={styles.payloadCode}>{formatPayload(preparedPayload)}</Text>
+                  </View>
+                )}
+
+                {savedGarment && (
+                  <View style={styles.successCard}>
+                    <Text style={styles.successTitle}>Garment saved</Text>
+                    <Text style={styles.successBody}>
+                      Saved as <Text style={styles.successStrong}>{savedGarment.name}</Text> with id {savedGarment.id}.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </AppScreen>
+  );
+}
+
+function createInitialReviewDefaults(): GarmentReviewFormValues {
+  return {
+    name: '',
+    category: '',
+    primaryColor: '',
+    washTemperatureC: '',
+    careInstructionsText: '',
+    fabricNotesText: '',
+    rawLabelText: '',
+    machineWashable: false,
+    tumbleDry: false,
+    dryCleanOnly: false,
+    ironAllowed: false,
+    ironTemp: '',
+    bleachAllowed: false,
+  };
+}
+
+function buildReviewDefaults(parseResult: ParsedLabelResult): GarmentReviewFormValues {
+  return {
+    name: parseResult.parsed.nameSuggestion,
+    category: parseResult.parsed.category,
+    primaryColor: parseResult.parsed.primaryColor,
+    washTemperatureC:
+      parseResult.parsed.washTemperatureC === null ? '' : String(parseResult.parsed.washTemperatureC),
+    careInstructionsText: parseResult.parsed.careInstructions.join('\n'),
+    fabricNotesText: parseResult.parsed.fabricNotes.join('\n'),
+    rawLabelText: parseResult.parsed.rawLabelText,
+    machineWashable: parseResult.parsed.machineWashable,
+    tumbleDry: parseResult.parsed.tumbleDry,
+    dryCleanOnly: parseResult.parsed.dryCleanOnly,
+    ironAllowed: parseResult.parsed.ironAllowed,
+    ironTemp: parseResult.parsed.ironTemp ?? '',
+    bleachAllowed: parseResult.parsed.bleachAllowed,
+  };
+}
+
+function buildPreparedGarmentPayload(values: GarmentReviewFormValues): PreparedGarmentPayload {
+  const careInstructions = [
+    ...values.careInstructionsText
+      .split('\n')
+      .map((value) => value.trim())
+      .filter(Boolean),
+    ...buildInstructionFlags(values),
+  ];
+
+  return {
+    name: values.name.trim(),
+    category: emptyToNull(values.category),
+    primary_color: emptyToNull(values.primaryColor),
+    wash_temperature_c: values.washTemperatureC.trim() ? Number(values.washTemperatureC) : null,
+    care_instructions: Array.from(new Set(careInstructions)),
+    label_image_path: null,
+  };
+}
+
+function buildInstructionFlags(values: GarmentReviewFormValues) {
+  const instructions = [];
+
+  if (values.machineWashable) {
+    instructions.push('Machine washable');
+  }
+  if (values.tumbleDry) {
+    instructions.push('Tumble dry allowed');
+  }
+  if (values.dryCleanOnly) {
+    instructions.push('Dry clean only');
+  }
+  if (values.ironAllowed) {
+    instructions.push(values.ironTemp ? `Iron on ${values.ironTemp} heat` : 'Iron allowed');
+  }
+  if (!values.bleachAllowed) {
+    instructions.push('Do not bleach');
+  }
+
+  return instructions;
+}
+
+function emptyToNull(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function formatPayload(payload: PreparedGarmentPayload) {
+  return JSON.stringify(payload, null, 2);
+}
+
+function ControlledSwitch({
+  control,
+  label,
+  name,
+}: {
+  control: ReturnType<typeof useForm<GarmentReviewFormValues>>['control'];
+  label: string;
+  name:
+    | 'machineWashable'
+    | 'tumbleDry'
+    | 'dryCleanOnly'
+    | 'ironAllowed'
+    | 'bleachAllowed';
+}) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field: { onChange, value } }) => (
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>{label}</Text>
+          <Switch
+            onValueChange={onChange}
+            thumbColor={value ? '#f6efe2' : '#f6efe2'}
+            trackColor={{ false: '#d6cab3', true: palette.accent }}
+            value={value}
+          />
+        </View>
+      )}
+    />
   );
 }
 
@@ -557,5 +1025,132 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
+  },
+  reviewCard: {
+    backgroundColor: '#f7eddc',
+    borderColor: palette.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 14,
+    padding: 20,
+  },
+  formGrid: {
+    gap: 14,
+  },
+  fieldGroup: {
+    gap: 8,
+  },
+  fieldLabel: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  textInput: {
+    backgroundColor: '#fffaf2',
+    borderColor: '#d0c1a7',
+    borderRadius: 14,
+    borderWidth: 1,
+    color: palette.ink,
+    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  textInputError: {
+    borderColor: '#b5523f',
+  },
+  textArea: {
+    minHeight: 96,
+    textAlignVertical: 'top',
+  },
+  validationText: {
+    color: '#8f3e2f',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  toggleGrid: {
+    gap: 12,
+  },
+  toggleRow: {
+    alignItems: 'center',
+    backgroundColor: '#efe5d4',
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  toggleLabel: {
+    color: palette.ink,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    paddingRight: 12,
+  },
+  choiceChip: {
+    alignItems: 'center',
+    backgroundColor: '#e9ddc8',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  choiceChipSelected: {
+    backgroundColor: palette.ink,
+  },
+  choiceChipText: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  choiceChipTextSelected: {
+    color: '#f7f2e8',
+  },
+  reviewMessage: {
+    color: palette.accent,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  payloadCard: {
+    backgroundColor: '#e6dcc9',
+    borderRadius: 18,
+    gap: 8,
+    padding: 16,
+  },
+  payloadTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  payloadBody: {
+    color: palette.inkMuted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  payloadCode: {
+    color: palette.ink,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  successCard: {
+    backgroundColor: '#dbe8d5',
+    borderColor: '#a3be98',
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 6,
+    padding: 16,
+  },
+  successTitle: {
+    color: '#224126',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  successBody: {
+    color: '#35523b',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  successStrong: {
+    fontWeight: '700',
   },
 });
