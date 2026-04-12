@@ -8,9 +8,11 @@ type ParseCareLabelDeps = {
   delayMs?: number;
   now?: () => number;
   apiBaseUrl?: string | null;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchLike;
   platform?: string;
 };
+
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 type ParseLabelApiResponse = {
   name_suggestion: string;
@@ -55,7 +57,7 @@ export async function parseCareLabelPhoto(
 ): Promise<ParsedLabelResult> {
   const now = deps.now ?? Date.now;
   const delayMs = deps.delayMs ?? 1200;
-  const fetchImpl = deps.fetchImpl ?? fetch;
+  const fetchImpl = deps.fetchImpl ?? ((input, init) => fetch(input, init));
   const apiBaseUrl = deps.apiBaseUrl ?? getAppEnv().apiBaseUrl;
   const platform = deps.platform ?? inferRuntimePlatform();
   const startedAt = now();
@@ -164,7 +166,7 @@ async function parseViaAPI(
   photo: SelectedLabelPhoto,
   deps: {
     apiBaseUrl: string;
-    fetchImpl: typeof fetch;
+    fetchImpl: FetchLike;
     platform: string;
   }
 ) {
