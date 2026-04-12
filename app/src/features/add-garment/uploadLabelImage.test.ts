@@ -80,6 +80,35 @@ describe('uploadLabelImage', () => {
 
     expect(fetchImpl).toHaveBeenCalledWith('https://example.com/label.png');
   });
+
+  it('surfaces upload failures as a recoverable add-garment error code', async () => {
+    const upload = vi.fn().mockResolvedValue({
+      error: { message: 'storage rejected upload' },
+    });
+    const from = vi.fn().mockReturnValue({
+      upload,
+    });
+
+    await expect(
+      uploadLabelImage(
+        {
+          uri: 'https://example.com/label.jpeg',
+          fileName: 'label.jpeg',
+          mimeType: 'image/jpeg',
+          width: 900,
+          height: 1200,
+          fileSize: 2048,
+          webFile: new Blob(['label-bytes'], { type: 'image/jpeg' }),
+          source: 'library',
+        },
+        'user-123',
+        {
+          garmentId: 'garment-456',
+          storageClient: { from } as never,
+        }
+      )
+    ).rejects.toThrow('upload-failed');
+  });
 });
 
 describe('createSignedLabelImageUrl', () => {

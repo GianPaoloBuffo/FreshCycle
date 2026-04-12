@@ -48,6 +48,11 @@ export type AddGarmentErrorCode =
   | 'camera-unavailable'
   | 'selection-empty'
   | 'auth-required'
+  | 'api-unavailable'
+  | 'invalid-garment-id'
+  | 'invalid-label-image-path'
+  | 'invalid-wash-temperature'
+  | 'name-required'
   | 'save-failed'
   | 'upload-failed'
   | 'processing-failed';

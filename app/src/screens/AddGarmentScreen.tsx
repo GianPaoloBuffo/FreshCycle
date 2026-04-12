@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { useEffect, useMemo, useState } from 'react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   ActivityIndicator,
   Image,
@@ -30,7 +30,7 @@ import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 
-type FlowStatus = 'idle' | 'selecting' | 'processing' | 'ready';
+type FlowStatus = 'idle' | 'selecting' | 'processing' | 'uploading' | 'saving' | 'ready' | 'saved';
 type GarmentReviewFormValues = {
   name: string;
   category: string;
@@ -63,6 +63,7 @@ export function AddGarmentScreen() {
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedLabelPhoto | null>(null);
   const [parseResult, setParseResult] = useState<ParsedLabelResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reviewErrorMessage, setReviewErrorMessage] = useState<string | null>(null);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const [preparedPayload, setPreparedPayload] = useState<PreparedGarmentPayload | null>(null);
   const [savedGarment, setSavedGarment] = useState<SavedGarment | null>(null);
@@ -71,22 +72,53 @@ export function AddGarmentScreen() {
   const {
     control,
     formState: { errors, isSubmitting },
+    getValues,
     handleSubmit,
     reset,
+    setValue,
   } = useForm<GarmentReviewFormValues>({
     defaultValues: createInitialReviewDefaults(),
   });
+  const ironAllowed = useWatch({
+    control,
+    name: 'ironAllowed',
+  });
 
   const canUseCamera = true;
-  const isBusy = status === 'selecting' || status === 'processing' || isSubmitting;
+  const isBusy =
+    status === 'selecting' ||
+    status === 'processing' ||
+    status === 'uploading' ||
+    status === 'saving' ||
+    isSubmitting;
+  const isSaving = status === 'uploading' || status === 'saving';
   const stackButtons = width < 720;
   const hasCapturedPhoto = Boolean(selectedPhoto);
   const showReviewForm = Boolean(parseResult);
+  const currentStageLabel = useMemo(() => {
+    switch (status) {
+      case 'selecting':
+        return 'Opening device picker';
+      case 'processing':
+        return 'Parsing care label';
+      case 'uploading':
+        return 'Uploading private label image';
+      case 'saving':
+        return 'Saving garment record';
+      case 'saved':
+        return 'Garment saved';
+      case 'ready':
+        return parseResult ? 'Ready for review' : 'Ready to capture';
+      default:
+        return 'Waiting for capture';
+    }
+  }, [parseResult, status]);
 
   useEffect(() => {
     if (!parseResult) {
       reset(createInitialReviewDefaults());
       setPreparedPayload(null);
+      setReviewErrorMessage(null);
       setReviewMessage(null);
       setSavedGarment(null);
       setSavedLabelImageUrl(null);
@@ -95,15 +127,23 @@ export function AddGarmentScreen() {
 
     reset(buildReviewDefaults(parseResult));
     setPreparedPayload(null);
+    setReviewErrorMessage(null);
     setReviewMessage(null);
     setSavedGarment(null);
     setSavedLabelImageUrl(null);
   }, [parseResult, reset]);
 
+  useEffect(() => {
+    if (!ironAllowed) {
+      setValue('ironTemp', '');
+    }
+  }, [ironAllowed, setValue]);
+
   function resetFlow() {
     setSelectedPhoto(null);
     setParseResult(null);
     setErrorMessage(null);
+    setReviewErrorMessage(null);
     setReviewMessage(null);
     setPreparedPayload(null);
     setSavedGarment(null);
@@ -113,6 +153,7 @@ export function AddGarmentScreen() {
 
   async function handleSourceSelection(source: SelectedLabelPhoto['source']) {
     setErrorMessage(null);
+    setReviewErrorMessage(null);
     setStatus('selecting');
     setParseResult(null);
 
@@ -131,9 +172,11 @@ export function AddGarmentScreen() {
 
       setSelectedPhoto(nextPhoto);
       setStatus('processing');
+      setReviewErrorMessage(null);
       setReviewMessage(null);
       setPreparedPayload(null);
       setSavedGarment(null);
+      setSavedLabelImageUrl(null);
 
       const nextResult = await parseCareLabelPhoto(nextPhoto, {
         accessToken: session?.access_token ?? null,
@@ -152,6 +195,7 @@ export function AddGarmentScreen() {
           : describeAddGarmentError('processing-failed');
 
       setErrorMessage(message);
+      setReviewErrorMessage(null);
       setStatus(selectedPhoto ? 'ready' : 'idle');
       logAddGarmentError('label_selection_failed', error, {
         source,
@@ -163,8 +207,12 @@ export function AddGarmentScreen() {
   const submitReview = handleSubmit(async (values) => {
     try {
       if (!selectedPhoto || !session?.user.id) {
-        throw new Error('upload-failed');
+        throw new Error('auth-required');
       }
+
+      setReviewErrorMessage(null);
+      setReviewMessage(null);
+      setStatus('uploading');
 
       logAddGarmentEvent('label_upload_started', {
         source: selectedPhoto.source,
@@ -178,6 +226,7 @@ export function AddGarmentScreen() {
       });
 
       const payload = buildPreparedGarmentPayload(values, uploadedLabel);
+      setStatus('saving');
       const garment = await saveGarment(payload, {
         accessToken: session?.access_token ?? null,
       });
@@ -195,6 +244,7 @@ export function AddGarmentScreen() {
         });
       }
       setReviewMessage('Garment saved to your FreshCycle wardrobe.');
+      setStatus('saved');
       logAddGarmentEvent('review_form_submitted', {
         hasCategory: Boolean(payload.category),
         careInstructionCount: payload.care_instructions.length,
@@ -207,17 +257,16 @@ export function AddGarmentScreen() {
       });
     } catch (error) {
       const code =
-        error instanceof Error && error.message === 'auth-required'
-          ? 'auth-required'
-          : error instanceof Error && error.message === 'upload-failed'
-            ? 'upload-failed'
-            : 'save-failed';
+        error instanceof Error && isAddGarmentErrorCode(error.message)
+          ? error.message
+          : 'save-failed';
 
       if (code === 'upload-failed') {
         logAddGarmentError('label_upload_failed', error, {});
       }
 
-      setReviewMessage(describeAddGarmentError(code));
+      setStatus(parseResult ? 'ready' : 'idle');
+      setReviewErrorMessage(describeAddGarmentError(code));
       logAddGarmentError('garment_save_failed', error, {});
       logAddGarmentError('review_form_failed', error, {});
     }
@@ -232,6 +281,16 @@ export function AddGarmentScreen() {
           <Text style={styles.body}>
             Start with a fresh camera shot when possible, or fall back to the photo library if the label
             is already saved on your device.
+          </Text>
+        </View>
+
+        <View style={styles.stageCard}>
+          <Text style={styles.stageEyebrow}>Current stage</Text>
+          <Text style={styles.stageTitle}>{currentStageLabel}</Text>
+          <Text style={styles.stageBody}>
+            {status === 'saved'
+              ? 'The capture, parse, upload, and save steps all completed for this garment.'
+              : 'FreshCycle keeps the flow recoverable at each step so you can retry without starting from scratch.'}
           </Text>
         </View>
 
@@ -354,12 +413,16 @@ export function AddGarmentScreen() {
           </View>
         )}
 
-        {status === 'processing' && (
+        {(status === 'processing' || status === 'uploading' || status === 'saving') && (
           <View style={styles.processingCard}>
             <ActivityIndicator color={palette.ink} />
-            <Text style={styles.processingTitle}>Parsing care label</Text>
+            <Text style={styles.processingTitle}>{currentStageLabel}</Text>
             <Text style={styles.processingBody}>
-              FreshCycle is validating the upload and preparing structured garment details for review.
+              {status === 'processing'
+                ? 'FreshCycle is validating the upload and preparing structured garment details for review.'
+                : status === 'uploading'
+                  ? 'FreshCycle is storing the label image in your private Supabase bucket before saving the garment.'
+                  : 'FreshCycle is writing the final garment record with the uploaded label path.'}
             </Text>
           </View>
         )}
@@ -422,7 +485,7 @@ export function AddGarmentScreen() {
                       control={control}
                       name="name"
                       rules={{
-                        required: 'Add a garment name before saving.',
+                        validate: (value) => (value.trim() ? true : 'Add a garment name before saving.'),
                       }}
                       render={({ field: { onBlur, onChange, value } }) => (
                         <TextInput
@@ -555,6 +618,22 @@ export function AddGarmentScreen() {
                   <Controller
                     control={control}
                     name="careInstructionsText"
+                    rules={{
+                      validate: (value) => {
+                        const typedInstructions = value
+                          .split('\n')
+                          .map((entry) => entry.trim())
+                          .filter(Boolean);
+
+                        if (typedInstructions.length > 0) {
+                          return true;
+                        }
+
+                        return valuesFromToggles(getValues()) > 0
+                          ? true
+                          : 'Add at least one care instruction or enable a care toggle before saving.';
+                      },
+                    }}
                     render={({ field: { onBlur, onChange, value } }) => (
                       <TextInput
                         multiline
@@ -563,11 +642,14 @@ export function AddGarmentScreen() {
                         onChangeText={onChange}
                         placeholder="One instruction per line"
                         placeholderTextColor="#77887a"
-                        style={[styles.textInput, styles.textArea]}
+                        style={[styles.textInput, styles.textArea, errors.careInstructionsText && styles.textInputError]}
                         value={value}
                       />
                     )}
                   />
+                  {errors.careInstructionsText && (
+                    <Text style={styles.validationText}>{errors.careInstructionsText.message}</Text>
+                  )}
                 </View>
 
                 <View style={styles.fieldGroup}>
@@ -620,7 +702,13 @@ export function AddGarmentScreen() {
                       stackButtons && styles.fullWidthButton,
                       (!session || isBusy) && styles.buttonDisabled,
                     ]}>
-                    <Text style={styles.primaryButtonText}>Save garment details</Text>
+                    <Text style={styles.primaryButtonText}>
+                      {status === 'uploading'
+                        ? 'Uploading label image...'
+                        : status === 'saving'
+                          ? 'Saving garment...'
+                          : 'Save garment details'}
+                    </Text>
                   </Pressable>
                   <Pressable
                     accessibilityLabel="Reset garment review defaults"
@@ -632,6 +720,7 @@ export function AddGarmentScreen() {
 
                       reset(buildReviewDefaults(parseResult));
                       setPreparedPayload(null);
+                      setReviewErrorMessage(null);
                       setReviewMessage(null);
                     }}
                     style={[
@@ -642,6 +731,46 @@ export function AddGarmentScreen() {
                     <Text style={styles.secondaryButtonText}>Reset review fields</Text>
                   </Pressable>
                 </View>
+
+                {reviewErrorMessage && (
+                  <View style={styles.inlineErrorCard}>
+                    <Text style={styles.errorTitle}>Save needs attention</Text>
+                    <Text style={styles.errorBody}>{reviewErrorMessage}</Text>
+                    <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
+                      <Pressable
+                        accessibilityLabel="Retry saving garment"
+                        disabled={!session || isBusy}
+                        onPress={() => void submitReview()}
+                        style={[
+                          styles.errorActionButton,
+                          stackButtons && styles.fullWidthButton,
+                          (!session || isBusy) && styles.buttonDisabled,
+                        ]}>
+                        <Text style={styles.errorActionButtonText}>Retry save</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityLabel="Reset garment review fields"
+                        disabled={!parseResult || isBusy}
+                        onPress={() => {
+                          if (!parseResult) {
+                            return;
+                          }
+
+                          reset(buildReviewDefaults(parseResult));
+                          setPreparedPayload(null);
+                          setReviewErrorMessage(null);
+                          setReviewMessage(null);
+                        }}
+                        style={[
+                          styles.secondaryButton,
+                          stackButtons && styles.fullWidthButton,
+                          (!parseResult || isBusy) && styles.buttonDisabled,
+                        ]}>
+                        <Text style={styles.secondaryButtonText}>Reset form</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
 
                 {reviewMessage && <Text style={styles.reviewMessage}>{reviewMessage}</Text>}
 
@@ -758,6 +887,34 @@ function buildInstructionFlags(values: GarmentReviewFormValues) {
   }
 
   return instructions;
+}
+
+function valuesFromToggles(values: GarmentReviewFormValues) {
+  return [
+    values.machineWashable,
+    values.tumbleDry,
+    values.dryCleanOnly,
+    values.ironAllowed,
+    !values.bleachAllowed,
+  ].filter(Boolean).length;
+}
+
+function isAddGarmentErrorCode(value: string): value is Parameters<typeof describeAddGarmentError>[0] {
+  return [
+    'camera-permission-denied',
+    'photo-library-permission-denied',
+    'camera-unavailable',
+    'selection-empty',
+    'auth-required',
+    'api-unavailable',
+    'invalid-garment-id',
+    'invalid-label-image-path',
+    'invalid-wash-temperature',
+    'name-required',
+    'save-failed',
+    'upload-failed',
+    'processing-failed',
+  ].includes(value);
 }
 
 function emptyToNull(value: string) {
@@ -906,6 +1063,31 @@ const styles = StyleSheet.create({
     color: palette.inkMuted,
     fontSize: 15,
     lineHeight: 22,
+  },
+  stageCard: {
+    backgroundColor: '#edf1e1',
+    borderColor: '#c3cfab',
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+    padding: 20,
+  },
+  stageEyebrow: {
+    color: palette.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  stageTitle: {
+    color: palette.ink,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  stageBody: {
+    color: palette.inkMuted,
+    fontSize: 14,
+    lineHeight: 20,
   },
   inlineLink: {
     color: palette.ink,
@@ -1162,6 +1344,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
+  },
+  inlineErrorCard: {
+    backgroundColor: '#f7ddd6',
+    borderColor: '#d48e7f',
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 10,
+    padding: 16,
   },
   payloadCard: {
     backgroundColor: '#e6dcc9',

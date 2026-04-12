@@ -1,4 +1,5 @@
 import { getAppEnv } from '@/lib/env';
+import { AddGarmentErrorCode } from './types';
 
 export type SaveGarmentPayload = {
   id: string;
@@ -50,9 +51,32 @@ export async function saveGarment(payload: SaveGarmentPayload, deps: SaveGarment
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || 'save-failed');
+    const errorCode = await extractSaveErrorCode(response);
+    throw new Error(errorCode);
   }
 
   return (await response.json()) as SavedGarment;
+}
+
+async function extractSaveErrorCode(response: Response): Promise<AddGarmentErrorCode> {
+  try {
+    const body = (await response.json()) as { error?: string };
+
+    switch (body.error) {
+      case 'auth_required':
+        return 'auth-required';
+      case 'name_required':
+        return 'name-required';
+      case 'invalid_wash_temperature':
+        return 'invalid-wash-temperature';
+      case 'invalid_garment_id':
+        return 'invalid-garment-id';
+      case 'invalid_label_image_path':
+        return 'invalid-label-image-path';
+      default:
+        return 'save-failed';
+    }
+  } catch {
+    return 'save-failed';
+  }
 }

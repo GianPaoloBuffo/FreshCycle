@@ -135,6 +135,16 @@ export function describeAddGarmentError(code: AddGarmentErrorCode) {
       return 'No image was returned by the picker. Try again with a clear care-label photo.';
     case 'auth-required':
       return 'Your FreshCycle session needs attention before we can call the API. Sign in again and retry.';
+    case 'api-unavailable':
+      return 'FreshCycle could not reach the API configuration for this step yet.';
+    case 'name-required':
+      return 'Add a garment name before saving.';
+    case 'invalid-wash-temperature':
+      return 'Wash temperature must be a whole number between 0 and 95.';
+    case 'invalid-garment-id':
+      return 'FreshCycle could not prepare a valid garment identifier. Try again.';
+    case 'invalid-label-image-path':
+      return 'FreshCycle could not associate that label image with your private storage folder.';
     case 'save-failed':
       return 'FreshCycle could not save that garment yet. Retry in a moment.';
     case 'upload-failed':

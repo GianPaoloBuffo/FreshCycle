@@ -52,7 +52,7 @@ export async function createSignedLabelImageUrl(
     .createSignedUrl(objectPath, expiresInSeconds);
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error('upload-failed');
   }
 
   return data.signedUrl;
