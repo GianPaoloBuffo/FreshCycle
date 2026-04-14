@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { startTransition, useEffect, useEffectEvent, useState } from 'react';
+import { startTransition, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -31,12 +31,9 @@ export function HomeScreen() {
   const userEmail = session?.user.email ?? null;
   const isCompact = width < 640;
   const canLoadWardrobe = authReady && !loading && Boolean(session);
+  const lastLoadedAccessTokenRef = useRef<string | null>(null);
 
-  const loadGarments = useEffectEvent(async (reason: 'initial' | 'refresh') => {
-    if (!session?.access_token) {
-      return;
-    }
-
+  async function loadGarments(accessToken: string, reason: 'initial' | 'refresh') {
     if (reason === 'refresh') {
       setIsRefreshing(true);
       logWardrobeEvent('wardrobe_refresh_started', {
@@ -52,7 +49,7 @@ export function HomeScreen() {
 
     try {
       const nextGarments = await fetchGarments({
-        accessToken: session.access_token,
+        accessToken,
       });
 
       startTransition(() => {
@@ -77,7 +74,7 @@ export function HomeScreen() {
       setIsFetching(false);
       setIsRefreshing(false);
     }
-  });
+  }
 
   useEffect(() => {
     if (!canLoadWardrobe) {
@@ -85,11 +82,18 @@ export function HomeScreen() {
       setFetchError(null);
       setIsFetching(false);
       setIsRefreshing(false);
+      lastLoadedAccessTokenRef.current = null;
       return;
     }
 
-    void loadGarments('initial');
-  }, [canLoadWardrobe, loadGarments]);
+    const accessToken = session?.access_token ?? null;
+    if (!accessToken || lastLoadedAccessTokenRef.current === accessToken) {
+      return;
+    }
+
+    lastLoadedAccessTokenRef.current = accessToken;
+    void loadGarments(accessToken, 'initial');
+  }, [canLoadWardrobe, session?.access_token]);
 
   return (
     <AppScreen>
@@ -100,7 +104,11 @@ export function HomeScreen() {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={() => {
-                void loadGarments('refresh');
+                if (!session?.access_token) {
+                  return;
+                }
+
+                void loadGarments(session.access_token, 'refresh');
               }}
               tintColor={palette.accent}
             />
@@ -175,7 +183,11 @@ export function HomeScreen() {
             <Text style={styles.meta}>{fetchError}</Text>
             <Pressable
               onPress={() => {
-                void loadGarments('initial');
+                if (!session?.access_token) {
+                  return;
+                }
+
+                void loadGarments(session.access_token, 'initial');
               }}
               style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Try again</Text>
