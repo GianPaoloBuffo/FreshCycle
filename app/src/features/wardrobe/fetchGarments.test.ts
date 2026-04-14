@@ -54,4 +54,23 @@ describe('fetchGarments', () => {
       })
     ).rejects.toThrow('auth-required');
   });
+
+  it('treats expired sessions as auth-required', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () =>
+        Promise.resolve({
+          error: 'invalid_token',
+        }),
+    });
+
+    await expect(
+      fetchGarments({
+        accessToken: 'token-123',
+        apiBaseUrl: 'https://api.example.com',
+        fetchImpl: fetchImpl as never,
+      })
+    ).rejects.toThrow('auth-required');
+  });
 });
