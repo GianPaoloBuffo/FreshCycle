@@ -36,11 +36,16 @@ export async function fetchGarments(deps: FetchGarmentsDeps = {}) {
 }
 
 async function extractFetchErrorCode(response: Response) {
+  if (response.status === 401) {
+    return 'auth-required';
+  }
+
   try {
     const body = (await response.json()) as { error?: string };
 
     switch (body.error) {
       case 'auth_required':
+      case 'invalid_token':
         return 'auth-required';
       default:
         return 'fetch-failed';

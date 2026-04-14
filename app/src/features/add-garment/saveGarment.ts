@@ -59,11 +59,16 @@ export async function saveGarment(payload: SaveGarmentPayload, deps: SaveGarment
 }
 
 async function extractSaveErrorCode(response: Response): Promise<AddGarmentErrorCode> {
+  if (response.status === 401) {
+    return 'auth-required';
+  }
+
   try {
     const body = (await response.json()) as { error?: string };
 
     switch (body.error) {
       case 'auth_required':
+      case 'invalid_token':
         return 'auth-required';
       case 'name_required':
         return 'name-required';

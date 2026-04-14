@@ -59,4 +59,23 @@ describe('saveGarment', () => {
       })
     ).rejects.toThrow('invalid-label-image-path');
   });
+
+  it('treats expired sessions as auth-required', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () =>
+        Promise.resolve({
+          error: 'invalid_token',
+        }),
+    });
+
+    await expect(
+      saveGarment(payload, {
+        accessToken: 'token-123',
+        apiBaseUrl: 'https://api.example.com',
+        fetchImpl: fetchImpl as never,
+      })
+    ).rejects.toThrow('auth-required');
+  });
 });
