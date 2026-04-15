@@ -59,18 +59,16 @@ describe('groupGarments', () => {
   it('groups garments by normalized colour buckets', () => {
     const sections = groupGarments(garments, 'colour');
 
-    expect(sections.map((section) => section.title)).toEqual(['Whites', 'Darks', 'Colours']);
+    expect(sections.map((section) => section.title)).toEqual(['Whites', 'Darks', 'Dry clean only']);
     expect(sections[1]?.garments[0]?.name).toBe('Navy Hoodie');
+    expect(sections[2]?.garments[0]?.name).toBe('Silk Blouse');
   });
 
   it('groups garments by machine temperature buckets', () => {
     const sections = groupGarments(garments, 'temperature');
 
-    expect(sections.map((section) => section.title)).toEqual([
-      '30C loads',
-      '40C loads',
-      'Unknown temperature',
-    ]);
+    expect(sections.map((section) => section.title)).toEqual(['30C loads', '40C loads', 'Dry clean only']);
+    expect(sections[2]?.description).toContain('stay out of machine-wash load groupings');
   });
 
   it('uses normalized category labels when grouping by category', () => {
