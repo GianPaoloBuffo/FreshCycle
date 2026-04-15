@@ -162,12 +162,28 @@ function inferMachineTempBucket(washTemperatureC: number | null): WardrobeMachin
 function getSectionDefinition(garment: NormalizedWardrobeGarment, mode: WardrobeGroupingMode) {
   switch (mode) {
     case 'colour':
+      if (garment.care_method !== 'machine_wash') {
+        return {
+          key: `special-care:${garment.care_method}`,
+          title: specialCareTitle(garment.care_method),
+          description: specialCareDescription(garment.care_method),
+        };
+      }
+
       return {
         key: `colour:${garment.colour_group}`,
         title: colourGroupTitle(garment.colour_group),
         description: colourGroupDescription(garment.colour_group),
       };
     case 'temperature':
+      if (garment.care_method !== 'machine_wash') {
+        return {
+          key: `special-care:${garment.care_method}`,
+          title: specialCareTitle(garment.care_method),
+          description: specialCareDescription(garment.care_method),
+        };
+      }
+
       return {
         key: `temperature:${garment.machine_temp_bucket}`,
         title: machineTempBucketTitle(garment.machine_temp_bucket),
@@ -190,7 +206,14 @@ function getSectionDefinition(garment: NormalizedWardrobeGarment, mode: Wardrobe
 
 function compareSections(left: string, right: string, mode: WardrobeGroupingMode) {
   if (mode === 'colour') {
-    return rankByOrder(left, right, ['colour:white', 'colour:light', 'colour:dark', 'colour:colour']);
+    return rankByOrder(left, right, [
+      'colour:white',
+      'colour:light',
+      'colour:dark',
+      'colour:colour',
+      'special-care:hand_wash',
+      'special-care:dry_clean',
+    ]);
   }
 
   if (mode === 'temperature') {
@@ -200,6 +223,8 @@ function compareSections(left: string, right: string, mode: WardrobeGroupingMode
       'temperature:60',
       'temperature:90',
       'temperature:unknown',
+      'special-care:hand_wash',
+      'special-care:dry_clean',
     ]);
   }
 
@@ -278,5 +303,27 @@ function machineTempBucketDescription(bucket: WardrobeMachineTempBucket) {
       return 'High-heat items only.';
     default:
       return 'Missing wash temperature, so review the label before grouping into a load.';
+  }
+}
+
+function specialCareTitle(careMethod: NormalizedWardrobeGarment['care_method']) {
+  switch (careMethod) {
+    case 'hand_wash':
+      return 'Hand wash only';
+    case 'dry_clean':
+      return 'Dry clean only';
+    default:
+      return 'Special care';
+  }
+}
+
+function specialCareDescription(careMethod: NormalizedWardrobeGarment['care_method']) {
+  switch (careMethod) {
+    case 'hand_wash':
+      return 'Keep these items out of machine-wash load groupings.';
+    case 'dry_clean':
+      return 'These garments should stay out of machine-wash load groupings.';
+    default:
+      return 'Review these items separately before building a load.';
   }
 }
