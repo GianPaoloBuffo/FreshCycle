@@ -2,10 +2,12 @@ package garments
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -80,13 +82,70 @@ func (s PostgresStore) CreateGarment(ctx context.Context, input CreateInput) (Ga
 	return garment, nil
 }
 
-func (s PostgresStore) ListGarments(ctx context.Context, userID string) ([]Garment, error) {
-	rows, err := s.db.Query(ctx, `
+func (s PostgresStore) GetGarment(ctx context.Context, userID string, garmentID string) (Garment, error) {
+	trimmedID := strings.TrimSpace(garmentID)
+	if !canonicalUUIDPattern.MatchString(trimmedID) {
+		return Garment{}, ErrInvalidID
+	}
+
+	row := s.db.QueryRow(ctx, `
+		select id, user_id, name, category, primary_color, wash_temperature_c, care_instructions, label_image_path
+		from public.garments
+		where user_id = $1 and id = $2
+	`, strings.TrimSpace(userID), trimmedID)
+
+	var garment Garment
+	if err := row.Scan(
+		&garment.ID,
+		&garment.UserID,
+		&garment.Name,
+		&garment.Category,
+		&garment.PrimaryColor,
+		&garment.WashTemperatureC,
+		&garment.CareInstructions,
+		&garment.LabelImagePath,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Garment{}, ErrGarmentNotFound
+		}
+
+		return Garment{}, fmt.Errorf("get garment: %w", err)
+	}
+
+	return garment, nil
+}
+
+func (s PostgresStore) ListGarments(ctx context.Context, userID string, options ListOptions) ([]Garment, error) {
+	query := `
 		select id, user_id, name, category, primary_color, wash_temperature_c, care_instructions, label_image_path
 		from public.garments
 		where user_id = $1
-		order by created_at desc, name asc
-	`, strings.TrimSpace(userID))
+	`
+
+	args := []any{strings.TrimSpace(userID)}
+	if options.Category != nil {
+		query += ` and lower(category) = lower($2)`
+		args = append(args, strings.TrimSpace(*options.Category))
+	}
+
+	query += " order by "
+	switch options.SortBy {
+	case "name":
+		query += "name"
+	default:
+		query += "created_at"
+	}
+
+	switch options.Order {
+	case "asc":
+		query += " asc"
+	default:
+		query += " desc"
+	}
+
+	query += ", name asc"
+
+	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list garments: %w", err)
 	}

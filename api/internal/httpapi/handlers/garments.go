@@ -8,6 +8,7 @@ import (
 
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/garments"
 	httpmiddleware "github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 type createGarmentRequest struct {
@@ -81,7 +82,13 @@ func ListGarments(store garments.Store) http.HandlerFunc {
 			return
 		}
 
-		garmentsList, err := store.ListGarments(request.Context(), user.ID)
+		options, err := buildListOptions(request)
+		if err != nil {
+			writeJSONError(writer, http.StatusBadRequest, "invalid_query", err.Error())
+			return
+		}
+
+		garmentsList, err := store.ListGarments(request.Context(), user.ID, options)
 		if err != nil {
 			writeJSONError(writer, http.StatusInternalServerError, "garments_fetch_failed", "FreshCycle could not load your wardrobe just yet.")
 			return
@@ -91,6 +98,66 @@ func ListGarments(store garments.Store) http.HandlerFunc {
 		writer.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(writer).Encode(garmentsList)
 	}
+}
+
+func GetGarment(store garments.Store) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		user, ok := httpmiddleware.AuthenticatedUserFromContext(request.Context())
+		if !ok || strings.TrimSpace(user.ID) == "" {
+			writeJSONError(writer, http.StatusUnauthorized, "auth_required", "Sign in again before loading garments.")
+			return
+		}
+
+		garmentID := chi.URLParam(request, "garmentID")
+		garment, err := store.GetGarment(request.Context(), user.ID, garmentID)
+		if err != nil {
+			switch {
+			case errors.Is(err, garments.ErrInvalidID):
+				writeJSONError(writer, http.StatusBadRequest, "invalid_garment_id", "Use a valid garment id before loading garment details.")
+			case errors.Is(err, garments.ErrGarmentNotFound):
+				writeJSONError(writer, http.StatusNotFound, "garment_not_found", "FreshCycle could not find that garment in your wardrobe.")
+			default:
+				writeJSONError(writer, http.StatusInternalServerError, "garment_fetch_failed", "FreshCycle could not load that garment just yet.")
+			}
+			return
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(writer).Encode(garment)
+	}
+}
+
+func buildListOptions(request *http.Request) (garments.ListOptions, error) {
+	query := request.URL.Query()
+	options := garments.ListOptions{
+		Order:  "desc",
+		SortBy: "created_at",
+	}
+
+	if category := strings.TrimSpace(query.Get("category")); category != "" {
+		options.Category = &category
+	}
+
+	if sortBy := strings.TrimSpace(query.Get("sort")); sortBy != "" {
+		switch sortBy {
+		case "created_at", "name":
+			options.SortBy = sortBy
+		default:
+			return garments.ListOptions{}, errors.New("Sort must be created_at or name.")
+		}
+	}
+
+	if order := strings.TrimSpace(query.Get("order")); order != "" {
+		switch order {
+		case "asc", "desc":
+			options.Order = order
+		default:
+			return garments.ListOptions{}, errors.New("Order must be asc or desc.")
+		}
+	}
+
+	return options, nil
 }
 
 func normalizeOptionalString(value *string) *string {

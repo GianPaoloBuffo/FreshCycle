@@ -28,11 +28,14 @@ func (s stubAuthValidator) ValidateAccessToken(_ context.Context, _ string) (aut
 }
 
 type stubGarmentStore struct {
-	result     garments.Garment
-	list       []garments.Garment
-	err        error
-	last       garments.CreateInput
-	lastUserID string
+	result          garments.Garment
+	getResult       garments.Garment
+	list            []garments.Garment
+	err             error
+	last            garments.CreateInput
+	lastUserID      string
+	lastGarmentID   string
+	lastListOptions garments.ListOptions
 }
 
 func (s *stubGarmentStore) CreateGarment(_ context.Context, input garments.CreateInput) (garments.Garment, error) {
@@ -40,8 +43,15 @@ func (s *stubGarmentStore) CreateGarment(_ context.Context, input garments.Creat
 	return s.result, s.err
 }
 
-func (s *stubGarmentStore) ListGarments(_ context.Context, userID string) ([]garments.Garment, error) {
+func (s *stubGarmentStore) GetGarment(_ context.Context, userID string, garmentID string) (garments.Garment, error) {
 	s.lastUserID = userID
+	s.lastGarmentID = garmentID
+	return s.getResult, s.err
+}
+
+func (s *stubGarmentStore) ListGarments(_ context.Context, userID string, options garments.ListOptions) ([]garments.Garment, error) {
+	s.lastUserID = userID
+	s.lastListOptions = options
 	return s.list, s.err
 }
 
@@ -241,7 +251,7 @@ func TestListGarmentsRoute(t *testing.T) {
 		},
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/garments", nil)
+	request := httptest.NewRequest(http.MethodGet, "/garments?sort=name&order=asc&category=Knitwear", nil)
 	recorder := httptest.NewRecorder()
 
 	httpapi.NewRouter(labelparser.NewStubParser(), store, testAllowedOrigins, stubAuthValidator{
@@ -254,6 +264,14 @@ func TestListGarmentsRoute(t *testing.T) {
 
 	if store.lastUserID != "user-123" {
 		t.Fatalf("expected user id user-123, got %s", store.lastUserID)
+	}
+
+	if store.lastListOptions.SortBy != "name" || store.lastListOptions.Order != "asc" {
+		t.Fatalf("expected list options to be forwarded, got %#v", store.lastListOptions)
+	}
+
+	if store.lastListOptions.Category == nil || *store.lastListOptions.Category != "Knitwear" {
+		t.Fatalf("expected category filter Knitwear, got %#v", store.lastListOptions.Category)
 	}
 
 	var response []garments.Garment
@@ -286,6 +304,99 @@ func TestListGarmentsRouteRejectsMissingAuth(t *testing.T) {
 
 	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"auth_required"`)) {
 		t.Fatalf("expected auth_required response body, got %s", recorder.Body.String())
+	}
+}
+
+func TestListGarmentsRouteRejectsInvalidQuery(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodGet, "/garments?sort=temperature", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"invalid_query"`)) {
+		t.Fatalf("expected invalid_query response body, got %s", recorder.Body.String())
+	}
+}
+
+func TestGetGarmentRoute(t *testing.T) {
+	t.Parallel()
+
+	store := &stubGarmentStore{
+		getResult: garments.Garment{
+			ID:               "29ce43cd-f095-476d-a7cb-1ee7850c14f1",
+			UserID:           "user-123",
+			Name:             "Navy Hoodie",
+			CareInstructions: []string{"Machine washable"},
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/garments/29ce43cd-f095-476d-a7cb-1ee7850c14f1", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), store, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	if store.lastUserID != "user-123" || store.lastGarmentID != "29ce43cd-f095-476d-a7cb-1ee7850c14f1" {
+		t.Fatalf("expected ownership-safe garment lookup, got user=%q garment=%q", store.lastUserID, store.lastGarmentID)
+	}
+}
+
+func TestGetGarmentRouteRejectsInvalidID(t *testing.T) {
+	t.Parallel()
+
+	store := &stubGarmentStore{
+		err: garments.ErrInvalidID,
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/garments/not-a-uuid", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), store, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"invalid_garment_id"`)) {
+		t.Fatalf("expected invalid_garment_id response body, got %s", recorder.Body.String())
+	}
+}
+
+func TestGetGarmentRouteReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	store := &stubGarmentStore{
+		err: garments.ErrGarmentNotFound,
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/garments/29ce43cd-f095-476d-a7cb-1ee7850c14f1", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), store, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"garment_not_found"`)) {
+		t.Fatalf("expected garment_not_found response body, got %s", recorder.Body.String())
 	}
 }
 

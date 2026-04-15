@@ -24,7 +24,14 @@ type Garment struct {
 	LabelImagePath   *string  `json:"label_image_path"`
 }
 
+type ListOptions struct {
+	Category *string
+	Order    string
+	SortBy   string
+}
+
 type Store interface {
 	CreateGarment(ctx context.Context, input CreateInput) (Garment, error)
-	ListGarments(ctx context.Context, userID string) ([]Garment, error)
+	GetGarment(ctx context.Context, userID string, garmentID string) (Garment, error)
+	ListGarments(ctx context.Context, userID string, options ListOptions) ([]Garment, error)
 }
