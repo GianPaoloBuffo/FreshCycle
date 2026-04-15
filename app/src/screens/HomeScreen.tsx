@@ -14,12 +14,19 @@ import {
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
 import { fetchGarments } from '@/features/wardrobe/fetchGarments';
+import { groupGarments } from '@/features/wardrobe/groupGarments';
 import { logWardrobeError, logWardrobeEvent } from '@/features/wardrobe/observability';
-import { WardrobeGarment } from '@/features/wardrobe/types';
+import { WardrobeGarment, WardrobeGroupSection, WardrobeGroupingMode } from '@/features/wardrobe/types';
 import { useAuth } from '@/hooks/useAuth';
 import { getAppEnv } from '@/lib/env';
 
 const env = getAppEnv();
+const groupingOptions: Array<{ label: string; value: WardrobeGroupingMode }> = [
+  { label: 'Flat list', value: 'flat' },
+  { label: 'Colour', value: 'colour' },
+  { label: 'Temperature', value: 'temperature' },
+  { label: 'Category', value: 'category' },
+];
 
 export function HomeScreen() {
   const { authReady, loading, session, signOut } = useAuth();
@@ -28,10 +35,23 @@ export function HomeScreen() {
   const [isFetching, setIsFetching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [groupingMode, setGroupingMode] = useState<WardrobeGroupingMode>('flat');
   const userEmail = session?.user.email ?? null;
   const isCompact = width < 640;
   const canLoadWardrobe = authReady && !loading && Boolean(session);
   const lastLoadedAccessTokenRef = useRef<string | null>(null);
+  let groupedSections: WardrobeGroupSection[] = [];
+  let groupingError = false;
+
+  try {
+    groupedSections = groupGarments(garments, groupingMode);
+  } catch (error) {
+    groupingError = true;
+    logWardrobeError('wardrobe_grouping_failed', error, {
+      groupingMode,
+      garmentCount: garments.length,
+    });
+  }
 
   async function loadGarments(accessToken: string, reason: 'initial' | 'refresh') {
     if (reason === 'refresh') {
@@ -208,7 +228,7 @@ export function HomeScreen() {
           </View>
         ) : null}
 
-        {canLoadWardrobe && garments.length > 0 ? (
+        {canLoadWardrobe && garments.length > 0 && !groupingError ? (
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.cardTitle}>Saved garments</Text>
@@ -217,34 +237,85 @@ export function HomeScreen() {
               </Text>
             </View>
 
-            {garments.map((garment) => (
-              <View key={garment.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.garmentName}>{garment.name}</Text>
-                  {garment.category ? <Text style={styles.badge}>{garment.category}</Text> : null}
-                </View>
+            <View style={styles.groupingBar}>
+              {groupingOptions.map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    setGroupingMode(option.value);
+                    logWardrobeEvent('wardrobe_grouping_selected', {
+                      groupingMode: option.value,
+                      garmentCount: garments.length,
+                    });
+                  }}
+                  style={[
+                    styles.groupingChip,
+                    groupingMode === option.value && styles.groupingChipActive,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.groupingChipText,
+                      groupingMode === option.value && styles.groupingChipTextActive,
+                    ]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
 
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Primary color</Text>
-                  <Text style={styles.detailValue}>{garment.primary_color ?? 'Not set yet'}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Wash temperature</Text>
-                  <Text style={styles.detailValue}>
-                    {garment.wash_temperature_c !== null ? `${garment.wash_temperature_c}°C` : 'Check label'}
+            {groupedSections.map((section) => (
+              <View key={section.key} style={styles.groupSection}>
+                <View style={styles.groupSectionHeader}>
+                  <Text style={styles.groupSectionTitle}>{section.title}</Text>
+                  <Text style={styles.meta}>
+                    {section.garments.length} item{section.garments.length === 1 ? '' : 's'}
                   </Text>
                 </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Care guidance</Text>
-                  <Text style={styles.detailValue}>
-                    {garment.care_instructions.length > 0
-                      ? garment.care_instructions.join(' • ')
-                      : 'No instructions captured yet'}
-                  </Text>
-                </View>
+                <Text style={styles.groupSectionDescription}>{section.description}</Text>
+
+                {section.garments.map((garment) => (
+                  <View key={garment.id} style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.garmentName}>{garment.name}</Text>
+                      <Text style={styles.badge}>{garment.category_label}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Primary color</Text>
+                      <Text style={styles.detailValue}>{garment.primary_color ?? 'Not set yet'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Wash temperature</Text>
+                      <Text style={styles.detailValue}>
+                        {garment.wash_temperature_c !== null ? `${garment.wash_temperature_c}°C` : 'Check label'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Care method</Text>
+                      <Text style={styles.detailValue}>{formatCareMethod(garment.care_method)}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Care guidance</Text>
+                      <Text style={styles.detailValue}>
+                        {garment.care_instructions.length > 0
+                          ? garment.care_instructions.join(' • ')
+                          : 'No instructions captured yet'}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
               </View>
             ))}
           </>
+        ) : null}
+
+        {canLoadWardrobe && garments.length > 0 && groupingError ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Grouping unavailable</Text>
+            <Text style={styles.meta}>
+              FreshCycle could not organize your wardrobe right now. Switch back after refreshing.
+            </Text>
+          </View>
         ) : null}
 
         <View style={styles.footerLinks}>
@@ -273,6 +344,17 @@ function describeWardrobeError(error: unknown) {
   }
 
   return 'FreshCycle could not load your wardrobe right now. Try again in a moment.';
+}
+
+function formatCareMethod(careMethod: string) {
+  switch (careMethod) {
+    case 'dry_clean':
+      return 'Dry clean';
+    case 'hand_wash':
+      return 'Hand wash';
+    default:
+      return 'Machine wash';
+  }
 }
 
 const styles = StyleSheet.create({
@@ -307,6 +389,52 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
     marginTop: 4,
+  },
+  groupingBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 18,
+  },
+  groupingChip: {
+    backgroundColor: palette.card,
+    borderColor: palette.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  groupingChipActive: {
+    backgroundColor: palette.ink,
+    borderColor: palette.ink,
+  },
+  groupingChipText: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  groupingChipTextActive: {
+    color: palette.canvas,
+  },
+  groupSection: {
+    marginBottom: 22,
+  },
+  groupSectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  groupSectionTitle: {
+    color: palette.ink,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  groupSectionDescription: {
+    color: palette.inkMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
   },
   card: {
     backgroundColor: palette.card,

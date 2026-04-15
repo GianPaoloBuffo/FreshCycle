@@ -4,7 +4,9 @@ type WardrobeEventName =
   | 'wardrobe_fetch_failed'
   | 'wardrobe_refresh_started'
   | 'wardrobe_refresh_succeeded'
-  | 'wardrobe_refresh_failed';
+  | 'wardrobe_refresh_failed'
+  | 'wardrobe_grouping_selected'
+  | 'wardrobe_grouping_failed';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 
