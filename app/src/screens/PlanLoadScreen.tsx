@@ -7,94 +7,39 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
+import { logLoadPlanningError, logLoadPlanningEvent } from '@/features/load-planning/observability';
+import { planLoads } from '@/features/load-planning/planLoads';
+import { LoadPlanningMode, PlannedLoadSummary } from '@/features/load-planning/types';
 import { fetchGarments } from '@/features/wardrobe/fetchGarments';
-import { groupGarments } from '@/features/wardrobe/groupGarments';
 import { logWardrobeError, logWardrobeEvent } from '@/features/wardrobe/observability';
-import { WardrobeGarment, WardrobeGroupSection, WardrobeGroupingMode } from '@/features/wardrobe/types';
+import { WardrobeGarment } from '@/features/wardrobe/types';
 import { useAuth } from '@/hooks/useAuth';
 import { getAppEnv } from '@/lib/env';
 
 const env = getAppEnv();
-const groupingOptions: Array<{ label: string; value: WardrobeGroupingMode }> = [
-  { label: 'Flat list', value: 'flat' },
-  { label: 'Colour', value: 'colour' },
-  { label: 'Temperature', value: 'temperature' },
-  { label: 'Category', value: 'category' },
+const planningModes: Array<{ label: string; value: LoadPlanningMode }> = [
+  { label: 'Smart loads', value: 'smart' },
+  { label: 'By colour', value: 'colour' },
+  { label: 'By temperature', value: 'temperature' },
+  { label: 'By category', value: 'category' },
 ];
 
-export function HomeScreen() {
-  const { authReady, loading, session, signOut } = useAuth();
-  const { width } = useWindowDimensions();
+export function PlanLoadScreen() {
+  const { authReady, loading, session } = useAuth();
   const [garments, setGarments] = useState<WardrobeGarment[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [groupingMode, setGroupingMode] = useState<WardrobeGroupingMode>('flat');
-  const userEmail = session?.user.email ?? null;
-  const isCompact = width < 640;
+  const [planningMode, setPlanningMode] = useState<LoadPlanningMode>('smart');
+  const [loads, setLoads] = useState<PlannedLoadSummary[]>([]);
+  const [planningError, setPlanningError] = useState<string | null>(null);
   const canLoadWardrobe = authReady && !loading && Boolean(session);
   const lastLoadedAccessTokenRef = useRef<string | null>(null);
-  let groupedSections: WardrobeGroupSection[] = [];
-  let groupingError = false;
-
-  try {
-    groupedSections = groupGarments(garments, groupingMode);
-  } catch (error) {
-    groupingError = true;
-    logWardrobeError('wardrobe_grouping_failed', error, {
-      groupingMode,
-      garmentCount: garments.length,
-    });
-  }
-
-  async function loadGarments(accessToken: string, reason: 'initial' | 'refresh') {
-    if (reason === 'refresh') {
-      setIsRefreshing(true);
-      logWardrobeEvent('wardrobe_refresh_started', {
-        hasExistingGarments: garments.length > 0,
-      });
-    } else {
-      setIsFetching(true);
-      setFetchError(null);
-      logWardrobeEvent('wardrobe_fetch_started', {
-        hasExistingGarments: garments.length > 0,
-      });
-    }
-
-    try {
-      const nextGarments = await fetchGarments({
-        accessToken,
-      });
-
-      startTransition(() => {
-        setGarments(nextGarments);
-        setFetchError(null);
-      });
-
-      logWardrobeEvent(reason === 'refresh' ? 'wardrobe_refresh_succeeded' : 'wardrobe_fetch_succeeded', {
-        garmentCount: nextGarments.length,
-      });
-    } catch (error) {
-      const message =
-        reason === 'refresh'
-          ? 'FreshCycle could not refresh your wardrobe right now. Pull down again in a moment.'
-          : describeWardrobeError(error);
-
-      setFetchError(message);
-      logWardrobeError(reason === 'refresh' ? 'wardrobe_refresh_failed' : 'wardrobe_fetch_failed', error, {
-        reason,
-      });
-    } finally {
-      setIsFetching(false);
-      setIsRefreshing(false);
-    }
-  }
 
   useEffect(() => {
     if (!canLoadWardrobe) {
@@ -114,6 +59,75 @@ export function HomeScreen() {
     lastLoadedAccessTokenRef.current = accessToken;
     void loadGarments(accessToken, 'initial');
   }, [canLoadWardrobe, session?.access_token]);
+
+  useEffect(() => {
+    try {
+      const nextLoads = planLoads(garments, planningMode);
+      startTransition(() => {
+        setLoads(nextLoads);
+        setPlanningError(null);
+      });
+
+      logLoadPlanningEvent('load_planning_generated', {
+        mode: planningMode,
+        garmentCount: garments.length,
+        loadCount: nextLoads.length,
+      });
+    } catch (error) {
+      setLoads([]);
+      setPlanningError('FreshCycle could not generate load summaries right now.');
+      logLoadPlanningError('load_planning_generation_failed', error, {
+        mode: planningMode,
+        garmentCount: garments.length,
+      });
+    }
+  }, [garments, planningMode]);
+
+  async function loadGarments(accessToken: string, reason: 'initial' | 'refresh') {
+    if (reason === 'refresh') {
+      setIsRefreshing(true);
+      logWardrobeEvent('wardrobe_refresh_started', {
+        hasExistingGarments: garments.length > 0,
+        surface: 'plan-load',
+      });
+    } else {
+      setIsFetching(true);
+      setFetchError(null);
+      logWardrobeEvent('wardrobe_fetch_started', {
+        hasExistingGarments: garments.length > 0,
+        surface: 'plan-load',
+      });
+    }
+
+    try {
+      const nextGarments = await fetchGarments({
+        accessToken,
+      });
+
+      startTransition(() => {
+        setGarments(nextGarments);
+        setFetchError(null);
+      });
+
+      logWardrobeEvent(reason === 'refresh' ? 'wardrobe_refresh_succeeded' : 'wardrobe_fetch_succeeded', {
+        garmentCount: nextGarments.length,
+        surface: 'plan-load',
+      });
+    } catch (error) {
+      setFetchError(
+        reason === 'refresh'
+          ? 'FreshCycle could not refresh your wardrobe right now. Pull down again in a moment.'
+          : describeWardrobeError(error)
+      );
+      logWardrobeError(reason === 'refresh' ? 'wardrobe_refresh_failed' : 'wardrobe_fetch_failed', error, {
+        reason,
+        surface: 'plan-load',
+      });
+    } finally {
+      setIsFetching(false);
+      setIsRefreshing(false);
+    }
+  }
 
   return (
     <AppScreen>
@@ -135,30 +149,12 @@ export function HomeScreen() {
           ) : undefined
         }>
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>Wardrobe</Text>
-          <Text style={styles.title}>Keep your laundry decisions grounded in what you actually own.</Text>
+          <Text style={styles.eyebrow}>Plan A Load</Text>
+          <Text style={styles.title}>Turn your wardrobe into practical wash-day batches.</Text>
           <Text style={styles.body}>
-            Review saved garments, spot missing details quickly, and jump straight into capturing the
-            next care label when your wardrobe needs more coverage.
+            Choose how you want to organize the load summaries, then review the grouped batches
+            FreshCycle generates from your saved garment care data.
           </Text>
-        </View>
-
-        <View style={[styles.card, styles.statusCard]}>
-          <View style={styles.statusHeader}>
-            <View>
-              <Text style={styles.cardTitle}>Account</Text>
-              <Text style={styles.meta}>
-                {authReady
-                  ? userEmail ?? 'Sign in to load your wardrobe.'
-                  : 'Configure Supabase auth to unlock wardrobe sync.'}
-              </Text>
-            </View>
-            {authReady && session ? (
-              <Pressable onPress={() => void signOut()} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>Sign out</Text>
-              </Pressable>
-            ) : null}
-          </View>
         </View>
 
         {!authReady ? (
@@ -180,11 +176,11 @@ export function HomeScreen() {
 
         {authReady && !loading && !session ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Sign in to view your wardrobe</Text>
+            <Text style={styles.cardTitle}>Sign in to plan a load</Text>
             <Text style={styles.meta}>
-              FreshCycle loads garments from your private account, so start by authenticating.
+              FreshCycle needs your private wardrobe data before it can suggest grouped loads.
             </Text>
-            <Link href="/auth" style={[styles.link, isCompact && styles.linkCompact]}>
+            <Link href={'/auth' as never} style={styles.link}>
               Open auth screens
             </Link>
           </View>
@@ -199,7 +195,7 @@ export function HomeScreen() {
 
         {canLoadWardrobe && fetchError ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Wardrobe unavailable</Text>
+            <Text style={styles.cardTitle}>Load planning unavailable</Text>
             <Text style={styles.meta}>{fetchError}</Text>
             <Pressable
               onPress={() => {
@@ -217,45 +213,44 @@ export function HomeScreen() {
 
         {canLoadWardrobe && !isFetching && garments.length === 0 && !fetchError ? (
           <View style={[styles.card, styles.emptyStateCard]}>
-            <Text style={styles.cardTitle}>Your wardrobe is empty</Text>
+            <Text style={styles.cardTitle}>No garments to plan yet</Text>
             <Text style={styles.meta}>
-              Start with your first garment so FreshCycle can build wash-safe loads from real care
-              label data.
+              Add garments first so FreshCycle has real care labels to group into loads.
             </Text>
-            <Link href={'/add-garment' as never} style={[styles.primaryLink, isCompact && styles.linkCompact]}>
-              Scan your first care label
+            <Link href={'/add-garment' as never} style={styles.primaryLink}>
+              Add your first garment
             </Link>
           </View>
         ) : null}
 
-        {canLoadWardrobe && garments.length > 0 && !groupingError ? (
+        {canLoadWardrobe && garments.length > 0 ? (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.cardTitle}>Saved garments</Text>
+              <Text style={styles.cardTitle}>Grouping mode</Text>
               <Text style={styles.meta}>
-                {garments.length} item{garments.length === 1 ? '' : 's'}
+                {garments.length} garment{garments.length === 1 ? '' : 's'}
               </Text>
             </View>
 
             <View style={styles.groupingBar}>
-              {groupingOptions.map((option) => (
+              {planningModes.map((option) => (
                 <Pressable
                   key={option.value}
                   onPress={() => {
-                    setGroupingMode(option.value);
-                    logWardrobeEvent('wardrobe_grouping_selected', {
-                      groupingMode: option.value,
+                    setPlanningMode(option.value);
+                    logLoadPlanningEvent('load_planning_mode_selected', {
+                      mode: option.value,
                       garmentCount: garments.length,
                     });
                   }}
                   style={[
                     styles.groupingChip,
-                    groupingMode === option.value && styles.groupingChipActive,
+                    planningMode === option.value && styles.groupingChipActive,
                   ]}>
                   <Text
                     style={[
                       styles.groupingChipText,
-                      groupingMode === option.value && styles.groupingChipTextActive,
+                      planningMode === option.value && styles.groupingChipTextActive,
                     ]}>
                     {option.label}
                   </Text>
@@ -263,70 +258,62 @@ export function HomeScreen() {
               ))}
             </View>
 
-            {groupedSections.map((section) => (
-              <View key={section.key} style={styles.groupSection}>
-                <View style={styles.groupSectionHeader}>
-                  <Text style={styles.groupSectionTitle}>{section.title}</Text>
-                  <Text style={styles.meta}>
-                    {section.garments.length} item{section.garments.length === 1 ? '' : 's'}
-                  </Text>
-                </View>
-                <Text style={styles.groupSectionDescription}>{section.description}</Text>
+            {planningError ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Load summaries unavailable</Text>
+                <Text style={styles.meta}>{planningError}</Text>
+              </View>
+            ) : null}
 
-                {section.garments.map((garment) => (
-                  <View key={garment.id} style={styles.card}>
-                    <View style={styles.cardHeader}>
-                      <Text style={styles.garmentName}>{garment.name}</Text>
-                      <Text style={styles.badge}>{garment.category_label}</Text>
-                    </View>
+            {!planningError && loads.length === 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>No valid loads yet</Text>
+                <Text style={styles.meta}>
+                  FreshCycle could not generate load summaries from the current wardrobe data yet.
+                  Try adding more garments with clear care labels.
+                </Text>
+              </View>
+            ) : null}
 
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Primary color</Text>
-                      <Text style={styles.detailValue}>{garment.primary_color ?? 'Not set yet'}</Text>
+            {!planningError &&
+              loads.map((load) => (
+                <View key={load.key} style={[styles.card, styles.loadCard]}>
+                  <View style={styles.loadHeader}>
+                    <View style={styles.loadHeaderCopy}>
+                      <Text style={styles.loadTitle}>{load.title}</Text>
+                      <Text style={styles.meta}>{load.description}</Text>
                     </View>
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Wash temperature</Text>
-                      <Text style={styles.detailValue}>
-                        {garment.wash_temperature_c !== null ? `${garment.wash_temperature_c}°C` : 'Check label'}
-                      </Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Care method</Text>
-                      <Text style={styles.detailValue}>{formatCareMethod(garment.care_method)}</Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Care guidance</Text>
-                      <Text style={styles.detailValue}>
-                        {garment.care_instructions.length > 0
-                          ? garment.care_instructions.join(' • ')
-                          : 'No instructions captured yet'}
-                      </Text>
+                    <View style={styles.loadBadge}>
+                      <Text style={styles.loadBadgeText}>{formatLoadType(load.loadType)}</Text>
                     </View>
                   </View>
-                ))}
-              </View>
-            ))}
+
+                  <View style={styles.metricsRow}>
+                    <View style={styles.metric}>
+                      <Text style={styles.metricLabel}>Garments</Text>
+                      <Text style={styles.metricValue}>{load.garments.length}</Text>
+                    </View>
+                    <View style={styles.metric}>
+                      <Text style={styles.metricLabel}>Unknown temp</Text>
+                      <Text style={styles.metricValue}>{load.hasUnknownTemperature ? 'Yes' : 'No'}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.previewLabel}>Included garments</Text>
+                  <Text style={styles.previewValue}>
+                    {load.garments.map((garment) => garment.name).join(' • ')}
+                  </Text>
+                </View>
+              ))}
           </>
         ) : null}
 
-        {canLoadWardrobe && garments.length > 0 && groupingError ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Grouping unavailable</Text>
-            <Text style={styles.meta}>
-              FreshCycle could not organize your wardrobe right now. Switch back after refreshing.
-            </Text>
-          </View>
-        ) : null}
-
         <View style={styles.footerLinks}>
-          <Link href={'/plan-load' as never} style={[styles.link, isCompact && styles.linkCompact]}>
-            Plan a load
+          <Link href={'/' as never} style={styles.linkSecondary}>
+            Back to wardrobe
           </Link>
-          <Link href={'/add-garment' as never} style={[styles.link, isCompact && styles.linkCompact]}>
-            Add another garment
-          </Link>
-          <Link href="/auth" style={[styles.linkSecondary, isCompact && styles.linkCompact]}>
-            Manage auth
+          <Link href={'/add-garment' as never} style={styles.link}>
+            Add more garments
           </Link>
         </View>
       </ScrollView>
@@ -338,7 +325,7 @@ function describeWardrobeError(error: unknown) {
   if (error instanceof Error) {
     switch (error.message) {
       case 'auth-required':
-        return 'Sign in again before loading your wardrobe.';
+        return 'Sign in again before planning a load.';
       case 'api-unavailable':
         return 'Set `EXPO_PUBLIC_API_BASE_URL` so FreshCycle knows where to load garments from.';
       default:
@@ -349,12 +336,14 @@ function describeWardrobeError(error: unknown) {
   return 'FreshCycle could not load your wardrobe right now. Try again in a moment.';
 }
 
-function formatCareMethod(careMethod: string) {
-  switch (careMethod) {
+function formatLoadType(loadType: PlannedLoadSummary['loadType']) {
+  switch (loadType) {
     case 'dry_clean':
       return 'Dry clean';
     case 'hand_wash':
       return 'Hand wash';
+    case 'mixed':
+      return 'Mixed';
     default:
       return 'Machine wash';
   }
@@ -419,26 +408,6 @@ const styles = StyleSheet.create({
   groupingChipTextActive: {
     color: palette.canvas,
   },
-  groupSection: {
-    marginBottom: 22,
-  },
-  groupSectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  groupSectionTitle: {
-    color: palette.ink,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  groupSectionDescription: {
-    color: palette.inkMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
   card: {
     backgroundColor: palette.card,
     borderColor: palette.border,
@@ -448,59 +417,73 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 20,
   },
-  featureCard: {
-    width: '100%',
-    maxWidth: 720,
-  },
-  statusCard: {
-    marginBottom: 20,
+  loadCard: {
+    backgroundColor: '#f2ead8',
   },
   cardTitle: {
     color: palette.ink,
     fontSize: 18,
     fontWeight: '600',
   },
-  cardHeader: {
-    alignItems: 'center',
+  loadHeader: {
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: 12,
     justifyContent: 'space-between',
   },
-  garmentName: {
-    color: palette.ink,
+  loadHeaderCopy: {
     flex: 1,
+    gap: 6,
+  },
+  loadTitle: {
+    color: palette.ink,
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  loadBadge: {
+    backgroundColor: palette.accentSoft,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  loadBadgeText: {
+    color: palette.ink,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  metric: {
+    backgroundColor: '#f7f2e8',
+    borderRadius: 16,
+    flex: 1,
+    gap: 4,
+    padding: 14,
+  },
+  metricLabel: {
+    color: palette.inkMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  metricValue: {
+    color: palette.ink,
     fontSize: 20,
     fontWeight: '700',
   },
-  badge: {
-    alignSelf: 'flex-start',
-    backgroundColor: palette.accentSoft,
-    borderRadius: 999,
-    color: palette.ink,
-    fontSize: 12,
-    fontWeight: '700',
-    overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    textTransform: 'uppercase',
-  },
-  detailRow: {
-    gap: 4,
-  },
-  detailLabel: {
+  previewLabel: {
     color: palette.inkMuted,
     fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  detailValue: {
+  previewValue: {
     color: palette.ink,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  listItem: {
-    color: palette.inkMuted,
     fontSize: 15,
     lineHeight: 22,
   },
@@ -521,9 +504,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 12,
   },
-  linkCompact: {
-    alignSelf: 'flex-start',
-  },
   primaryLink: {
     color: palette.ink,
     fontSize: 16,
@@ -543,26 +523,6 @@ const styles = StyleSheet.create({
     color: palette.canvas,
     fontSize: 14,
     fontWeight: '700',
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: palette.accentSoft,
-    borderRadius: 999,
-    marginTop: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  secondaryButtonText: {
-    color: palette.ink,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statusHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'space-between',
   },
   emptyStateCard: {
     backgroundColor: palette.cardStrong,

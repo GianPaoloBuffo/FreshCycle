@@ -26,6 +26,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ title: 'FreshCycle' }} />
         <Stack.Screen name="auth" options={{ title: 'Sign In or Sign Up' }} />
         <Stack.Screen name="add-garment" options={{ title: 'Add Garment' }} />
+        <Stack.Screen name="plan-load" options={{ title: 'Plan A Load' }} />
       </Stack>
     </AuthProvider>
   );
