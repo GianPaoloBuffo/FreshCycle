@@ -319,6 +319,9 @@ export function HomeScreen() {
         ) : null}
 
         <View style={styles.footerLinks}>
+          <Link href={'/schedules' as never} style={[styles.link, isCompact && styles.linkCompact]}>
+            View schedules
+          </Link>
           <Link href={'/plan-load' as never} style={[styles.link, isCompact && styles.linkCompact]}>
             Plan a load
           </Link>
