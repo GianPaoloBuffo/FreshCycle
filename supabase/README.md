@@ -18,11 +18,12 @@ supabase db push
 
 The checked-in `config.toml` defines the local service ports and behavior. The checked-in `seed.sql` is used during `supabase db reset`.
 
-The initial migration focuses on the Phase 1 data model only:
+The checked-in migrations currently cover:
 
 - `garments`
 - `laundry_schedules`
 - `schedule_garments`
+- `user_profiles`
 - private `garment-labels` storage bucket for label uploads
 
 The schema keeps ownership aligned with `auth.users` and enables row-level security so later authenticated API work can remain user-scoped by default.
@@ -54,8 +55,15 @@ User-owned schedules for recurring laundry reminders and due-today views. The re
 
 Join table connecting schedules to one or more garments.
 
+### user_profiles
+
+Per-user profile rows keyed to `auth.users`. The profile table is where Phase 4 stores the Expo push
+token so notification registration can be updated without adding notification-specific columns to the
+core garment or schedule tables.
+
 ## Migrations
 
 - `migrations/20260328194000_initial_schema.sql`: creates the initial tables, indexes, `updated_at` trigger, and row-level security policies
 - `migrations/20260412131500_add_private_label_storage.sql`: creates the private `garment-labels` bucket and user-scoped storage policies
+- `migrations/20260420190000_add_user_profiles_for_push_tokens.sql`: creates `user_profiles`, backfills missing rows for existing users, and auto-creates profile rows for new auth users
 - `seed.sql`: placeholder local seed file used by the CLI reset workflow
