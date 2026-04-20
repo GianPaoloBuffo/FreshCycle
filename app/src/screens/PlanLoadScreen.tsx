@@ -303,6 +303,20 @@ export function PlanLoadScreen() {
                   <Text style={styles.previewValue}>
                     {load.garments.map((garment) => garment.name).join(' • ')}
                   </Text>
+
+                  <Link
+                    href={
+                      {
+                        pathname: '/load-detail',
+                        params: {
+                          loadKey: load.key,
+                          mode: load.mode,
+                        },
+                      } as never
+                    }
+                    style={styles.link}>
+                    Open load details
+                  </Link>
                 </View>
               ))}
           </>

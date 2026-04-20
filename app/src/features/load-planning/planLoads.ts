@@ -48,6 +48,14 @@ export function planLoads(garments: WardrobeGarment[], mode: LoadPlanningMode): 
   });
 }
 
+export function getPlannedLoad(
+  garments: WardrobeGarment[],
+  mode: LoadPlanningMode,
+  loadKey: string
+) {
+  return planLoads(garments, mode).find((load) => load.key === loadKey) ?? null;
+}
+
 function buildSmartLoadKey(garment: ReturnType<typeof normalizeWardrobeGarment>) {
   switch (garment.care_method) {
     case 'hand_wash':

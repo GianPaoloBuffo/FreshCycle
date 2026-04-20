@@ -1,7 +1,9 @@
 type LoadPlanningEventName =
   | 'load_planning_mode_selected'
   | 'load_planning_generated'
-  | 'load_planning_generation_failed';
+  | 'load_planning_generation_failed'
+  | 'load_detail_opened'
+  | 'load_detail_failed';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 

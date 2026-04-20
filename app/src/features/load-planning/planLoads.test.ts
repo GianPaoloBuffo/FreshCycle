@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { planLoads } from './planLoads';
+import { getPlannedLoad, planLoads } from './planLoads';
 
 const garments = [
   {
@@ -99,5 +99,12 @@ describe('planLoads', () => {
 
   it('returns no loads for an empty wardrobe', () => {
     expect(planLoads([], 'smart')).toEqual([]);
+  });
+
+  it('can retrieve a specific planned load by key for detail screens', () => {
+    const load = getPlannedLoad(garments, 'smart', 'smart:machine_wash:30:white');
+
+    expect(load?.title).toBe('30C whites');
+    expect(load?.garments).toHaveLength(2);
   });
 });
