@@ -72,7 +72,19 @@ export function PlanLoadScreen() {
         mode: planningMode,
         garmentCount: garments.length,
         loadCount: nextLoads.length,
+        conflictCount: nextLoads.reduce((count, load) => count + load.conflictCount, 0),
+        warningCount: nextLoads.reduce((count, load) => count + load.warningCount, 0),
       });
+
+      const loadsWithIssues = nextLoads.filter((load) => load.issues.length > 0);
+      if (loadsWithIssues.length > 0) {
+        logLoadPlanningEvent('load_planning_issues_detected', {
+          mode: planningMode,
+          loadCount: loadsWithIssues.length,
+          conflictCount: loadsWithIssues.reduce((count, load) => count + load.conflictCount, 0),
+          warningCount: loadsWithIssues.reduce((count, load) => count + load.warningCount, 0),
+        });
+      }
     } catch (error) {
       setLoads([]);
       setPlanningError('FreshCycle could not generate load summaries right now.');
@@ -299,6 +311,28 @@ export function PlanLoadScreen() {
                     </View>
                   </View>
 
+                  {load.issues.length > 0 ? (
+                    <View style={styles.issueSummary}>
+                      <Text style={styles.issueSummaryTitle}>
+                        {formatIssueSummary(load.conflictCount, load.warningCount)}
+                      </Text>
+                      {load.issues.map((issue) => (
+                        <View
+                          key={`${load.key}:${issue.code}`}
+                          style={[
+                            styles.issueCard,
+                            issue.severity === 'conflict'
+                              ? styles.issueCardConflict
+                              : styles.issueCardWarning,
+                          ]}>
+                          <Text style={styles.issueEyebrow}>{issue.severity}</Text>
+                          <Text style={styles.issueTitle}>{issue.title}</Text>
+                          <Text style={styles.issueMessage}>{issue.message}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
                   <Text style={styles.previewLabel}>Included garments</Text>
                   <Text style={styles.previewValue}>
                     {load.garments.map((garment) => garment.name).join(' • ')}
@@ -361,6 +395,18 @@ function formatLoadType(loadType: PlannedLoadSummary['loadType']) {
     default:
       return 'Machine wash';
   }
+}
+
+function formatIssueSummary(conflictCount: number, warningCount: number) {
+  if (conflictCount > 0 && warningCount > 0) {
+    return `${conflictCount} conflict${conflictCount === 1 ? '' : 's'} and ${warningCount} warning${warningCount === 1 ? '' : 's'}`;
+  }
+
+  if (conflictCount > 0) {
+    return `${conflictCount} conflict${conflictCount === 1 ? '' : 's'} detected`;
+  }
+
+  return `${warningCount} warning${warningCount === 1 ? '' : 's'} detected`;
 }
 
 const styles = StyleSheet.create({
@@ -500,6 +546,42 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontSize: 15,
     lineHeight: 22,
+  },
+  issueSummary: {
+    gap: 10,
+  },
+  issueSummaryTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  issueCard: {
+    borderRadius: 16,
+    gap: 6,
+    padding: 14,
+  },
+  issueCardConflict: {
+    backgroundColor: '#f7d9d1',
+  },
+  issueCardWarning: {
+    backgroundColor: '#f8efcb',
+  },
+  issueEyebrow: {
+    color: palette.inkMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  issueTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  issueMessage: {
+    color: palette.ink,
+    fontSize: 14,
+    lineHeight: 20,
   },
   meta: {
     color: palette.inkMuted,

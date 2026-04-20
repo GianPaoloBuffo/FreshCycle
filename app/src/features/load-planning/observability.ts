@@ -1,6 +1,7 @@
 type LoadPlanningEventName =
   | 'load_planning_mode_selected'
   | 'load_planning_generated'
+  | 'load_planning_issues_detected'
   | 'load_planning_generation_failed'
   | 'load_detail_opened'
   | 'load_detail_failed';

@@ -90,6 +90,109 @@ describe('planLoads', () => {
     expect(loads[0]?.hasUnknownTemperature).toBe(true);
   });
 
+  it('flags mixed care conflicts in category loads', () => {
+    const loads = planLoads(
+      [
+        {
+          id: '6',
+          user_id: 'user-123',
+          name: 'Cotton Tee',
+          category: 'Tops',
+          primary_color: 'White',
+          wash_temperature_c: 30,
+          care_instructions: ['Machine washable'],
+          label_image_path: null,
+        },
+        {
+          id: '7',
+          user_id: 'user-123',
+          name: 'Wool Shell',
+          category: 'Tops',
+          primary_color: 'Cream',
+          wash_temperature_c: null,
+          care_instructions: ['Hand wash only'],
+          label_image_path: null,
+        },
+      ],
+      'category'
+    );
+    const mixedTopsLoad = loads.find((load) => load.title === 'Tops');
+
+    expect(mixedTopsLoad?.conflictCount).toBe(1);
+    expect(mixedTopsLoad?.issues[0]?.code).toBe('hand_wash_in_machine_load');
+  });
+
+  it('does not flag a single special-care category load as a conflict by itself', () => {
+    const loads = planLoads(
+      [
+        {
+          id: '6',
+          user_id: 'user-123',
+          name: 'Wool Shell',
+          category: 'Tops',
+          primary_color: 'Cream',
+          wash_temperature_c: null,
+          care_instructions: ['Hand wash only'],
+          label_image_path: null,
+        },
+      ],
+      'category'
+    );
+
+    expect(loads[0]?.issues).toEqual([]);
+  });
+
+  it('flags mixed machine temperature buckets inside non-smart loads', () => {
+    const loads = planLoads(
+      [
+        {
+          id: '6',
+          user_id: 'user-123',
+          name: 'Blue Tee',
+          category: 'Tops',
+          primary_color: 'Blue',
+          wash_temperature_c: 30,
+          care_instructions: ['Machine washable'],
+          label_image_path: null,
+        },
+        {
+          id: '7',
+          user_id: 'user-123',
+          name: 'Red Tee',
+          category: 'Tops',
+          primary_color: 'Red',
+          wash_temperature_c: 40,
+          care_instructions: ['Machine washable'],
+          label_image_path: null,
+        },
+      ],
+      'category'
+    );
+
+    expect(loads[0]?.issues.some((issue) => issue.code === 'mixed_machine_temperatures')).toBe(true);
+  });
+
+  it('warns when a temperature-planned load still has unknown temperature labels', () => {
+    const loads = planLoads(
+      [
+        {
+          id: '6',
+          user_id: 'user-123',
+          name: 'Mystery Tee',
+          category: 'Tops',
+          primary_color: 'Blue',
+          wash_temperature_c: null,
+          care_instructions: ['Machine washable'],
+          label_image_path: null,
+        },
+      ],
+      'temperature'
+    );
+
+    expect(loads[0]?.warningCount).toBe(1);
+    expect(loads[0]?.issues[0]?.code).toBe('unknown_temperature');
+  });
+
   it('supports category planning mode for later conflict detection work', () => {
     const loads = planLoads(garments, 'category');
 

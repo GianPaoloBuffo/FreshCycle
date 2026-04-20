@@ -83,6 +83,8 @@ export function LoadDetailScreen() {
       mode: planningMode,
       loadKey,
       garmentCount: nextLoad.garments.length,
+      conflictCount: nextLoad.conflictCount,
+      warningCount: nextLoad.warningCount,
     });
   }, [garments, loadKey, planningMode]);
 
@@ -221,6 +223,28 @@ export function LoadDetailScreen() {
                   <Text style={styles.metricValue}>{loadDetail.hasUnknownTemperature ? 'Yes' : 'No'}</Text>
                 </View>
               </View>
+
+              {loadDetail.issues.length > 0 ? (
+                <View style={styles.issueSummary}>
+                  <Text style={styles.issueSummaryTitle}>
+                    {formatIssueSummary(loadDetail.conflictCount, loadDetail.warningCount)}
+                  </Text>
+                  {loadDetail.issues.map((issue) => (
+                    <View
+                      key={`${loadDetail.key}:${issue.code}`}
+                      style={[
+                        styles.issueCard,
+                        issue.severity === 'conflict'
+                          ? styles.issueCardConflict
+                          : styles.issueCardWarning,
+                      ]}>
+                      <Text style={styles.issueEyebrow}>{issue.severity}</Text>
+                      <Text style={styles.issueTitle}>{issue.title}</Text>
+                      <Text style={styles.issueMessage}>{issue.message}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
 
             {loadDetail.garments.map((garment) => (
@@ -323,6 +347,18 @@ function formatColourGroup(colourGroup: PlannedLoadSummary['garments'][number]['
   }
 }
 
+function formatIssueSummary(conflictCount: number, warningCount: number) {
+  if (conflictCount > 0 && warningCount > 0) {
+    return `${conflictCount} conflict${conflictCount === 1 ? '' : 's'} and ${warningCount} warning${warningCount === 1 ? '' : 's'}`;
+  }
+
+  if (conflictCount > 0) {
+    return `${conflictCount} conflict${conflictCount === 1 ? '' : 's'} detected`;
+  }
+
+  return `${warningCount} warning${warningCount === 1 ? '' : 's'} detected`;
+}
+
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 24,
@@ -393,6 +429,42 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontSize: 20,
     fontWeight: '700',
+  },
+  issueSummary: {
+    gap: 10,
+  },
+  issueSummaryTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  issueCard: {
+    borderRadius: 16,
+    gap: 6,
+    padding: 14,
+  },
+  issueCardConflict: {
+    backgroundColor: '#f7d9d1',
+  },
+  issueCardWarning: {
+    backgroundColor: '#f8efcb',
+  },
+  issueEyebrow: {
+    color: palette.inkMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  issueTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  issueMessage: {
+    color: palette.ink,
+    fontSize: 14,
+    lineHeight: 20,
   },
   detailRow: {
     gap: 4,
