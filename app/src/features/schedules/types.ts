@@ -8,6 +8,20 @@ export type LaundrySchedule = {
   created_at: string;
 };
 
+export type CreateSchedulePayload = {
+  name: string;
+  recurrence: string;
+  garment_ids: string[];
+  reminders_enabled: boolean;
+};
+
+export type ScheduleFormValues = {
+  name: string;
+  recurrence: string;
+  garmentIds: string[];
+  remindersEnabled: boolean;
+};
+
 export type SchedulesViewState =
   | 'setup_required'
   | 'auth_loading'
