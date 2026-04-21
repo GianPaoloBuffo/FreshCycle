@@ -12,6 +12,8 @@ import {
 
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
+import { cancelLocalNotificationsForSchedule } from '@/features/notifications/localNotifications';
+import { deleteSchedule } from '@/features/schedules/deleteSchedule';
 import { fetchSchedules } from '@/features/schedules/fetchSchedules';
 import { logSchedulesError, logSchedulesEvent } from '@/features/schedules/observability';
 import { LaundrySchedule } from '@/features/schedules/types';
@@ -26,7 +28,9 @@ export function SchedulesScreen() {
   const [schedules, setSchedules] = useState<LaundrySchedule[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const lastLoadedAccessTokenRef = useRef<string | null>(null);
   const hasSession = Boolean(session);
   const viewState = getSchedulesViewState({
@@ -85,6 +89,7 @@ export function SchedulesScreen() {
       startTransition(() => {
         setSchedules(nextSchedules);
         setFetchError(null);
+        setDeleteError(null);
       });
 
       logSchedulesEvent('schedules_fetch_succeeded', {
@@ -105,6 +110,42 @@ export function SchedulesScreen() {
     } finally {
       setIsFetching(false);
       setIsRefreshing(false);
+    }
+  }
+
+  async function handleDeleteSchedule(scheduleId: string) {
+    if (!session?.access_token) {
+      return;
+    }
+
+    setDeletingScheduleId(scheduleId);
+    setDeleteError(null);
+    logSchedulesEvent('schedule_delete_started', {
+      scheduleId,
+    });
+
+    try {
+      await deleteSchedule(scheduleId, {
+        accessToken: session.access_token,
+      });
+      await cancelLocalNotificationsForSchedule(scheduleId);
+
+      startTransition(() => {
+        setSchedules((currentSchedules) =>
+          currentSchedules.filter((schedule) => schedule.id !== scheduleId)
+        );
+      });
+
+      logSchedulesEvent('schedule_delete_succeeded', {
+        scheduleId,
+      });
+    } catch (error) {
+      setDeleteError(describeDeleteError(error));
+      logSchedulesError('schedule_delete_failed', error, {
+        scheduleId,
+      });
+    } finally {
+      setDeletingScheduleId(null);
     }
   }
 
@@ -203,6 +244,13 @@ export function SchedulesScreen() {
           </View>
         ) : null}
 
+        {deleteError ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Schedule not deleted</Text>
+            <Text style={styles.meta}>{deleteError}</Text>
+          </View>
+        ) : null}
+
         {viewState === 'empty' ? (
           <View style={[styles.card, styles.emptyStateCard]}>
             <Text style={styles.cardTitle}>No schedules yet</Text>
@@ -252,6 +300,14 @@ export function SchedulesScreen() {
                   <Text style={styles.detailLabel}>Created</Text>
                   <Text style={styles.detailValue}>{formatCreatedAt(schedule.created_at)}</Text>
                 </View>
+                <Pressable
+                  disabled={deletingScheduleId === schedule.id}
+                  onPress={() => void handleDeleteSchedule(schedule.id)}
+                  style={styles.deleteButton}>
+                  <Text style={styles.deleteButtonText}>
+                    {deletingScheduleId === schedule.id ? 'Deleting...' : 'Delete schedule'}
+                  </Text>
+                </Pressable>
               </View>
             ))}
           </>
@@ -285,6 +341,27 @@ function describeSchedulesError(error: unknown) {
   }
 
   return 'FreshCycle could not load your schedules right now. Try again in a moment.';
+}
+
+function describeDeleteError(error: unknown) {
+  if (error instanceof Error) {
+    switch (error.message) {
+      case 'auth-required':
+        return 'Sign in again before deleting schedules.';
+      case 'api-unavailable':
+        return 'Set `EXPO_PUBLIC_API_BASE_URL` so FreshCycle knows where to delete schedules.';
+      case 'invalid-schedule-id':
+        return 'FreshCycle could not delete that schedule because its id was invalid.';
+      case 'schedule-not-found':
+        return 'That schedule was already removed or no longer belongs to this account.';
+      case 'local-notification-cancel-failed':
+        return 'The schedule was deleted, but FreshCycle could not cancel local reminders on this device.';
+      default:
+        return 'FreshCycle could not delete that schedule right now. Try again in a moment.';
+    }
+  }
+
+  return 'FreshCycle could not delete that schedule right now. Try again in a moment.';
 }
 
 function formatRecurrence(recurrence: string) {
@@ -434,6 +511,20 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: palette.canvas,
     fontSize: 16,
+    fontWeight: '700',
+  },
+  deleteButton: {
+    alignSelf: 'flex-start',
+    borderColor: '#b86b5f',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  deleteButtonText: {
+    color: '#9b4334',
+    fontSize: 15,
     fontWeight: '700',
   },
   primaryLink: {

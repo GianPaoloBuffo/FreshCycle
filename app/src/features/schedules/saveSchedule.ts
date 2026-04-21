@@ -57,6 +57,8 @@ async function extractSaveErrorCode(response: Response) {
         return 'name-required';
       case 'garment_ids_required':
         return 'garments-required';
+      case 'invalid_garment_id':
+        return 'invalid-garment-id';
       case 'invalid_recurrence':
         return 'recurrence-invalid';
       case 'route_not_found':

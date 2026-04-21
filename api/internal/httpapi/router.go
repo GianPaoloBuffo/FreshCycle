@@ -9,12 +9,17 @@ import (
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi/handlers"
 	httpmiddleware "github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi/middleware"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/schedules"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(parser labelparser.Parser, garmentStore garments.Store, allowedOrigins []string, validator auth.Validator) http.Handler {
+func NewRouter(parser labelparser.Parser, garmentStore garments.Store, allowedOrigins []string, validator auth.Validator, scheduleStores ...schedules.Store) http.Handler {
 	router := chi.NewRouter()
+	var scheduleStore schedules.Store
+	if len(scheduleStores) > 0 {
+		scheduleStore = scheduleStores[0]
+	}
 
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
@@ -30,6 +35,9 @@ func NewRouter(parser labelparser.Parser, garmentStore garments.Store, allowedOr
 	router.With(httpmiddleware.RequireAuth(validator)).Get("/garments", handlers.ListGarments(garmentStore))
 	router.With(httpmiddleware.RequireAuth(validator)).Get("/garments/{garmentID}", handlers.GetGarment(garmentStore))
 	router.With(httpmiddleware.RequireAuth(validator)).Post("/garments", handlers.CreateGarment(garmentStore))
+	router.With(httpmiddleware.RequireAuth(validator)).Get("/schedules", handlers.ListSchedules(scheduleStore))
+	router.With(httpmiddleware.RequireAuth(validator)).Post("/schedules", handlers.CreateSchedule(scheduleStore))
+	router.With(httpmiddleware.RequireAuth(validator)).Delete("/schedules/{scheduleID}", handlers.DeleteSchedule(scheduleStore))
 
 	return router
 }

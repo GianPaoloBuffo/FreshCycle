@@ -517,6 +517,8 @@ function describeSaveError(error: unknown) {
         return 'Give the schedule a name before saving.';
       case 'garments-required':
         return 'Select at least one garment before saving.';
+      case 'invalid-garment-id':
+        return 'Choose only garments from your own wardrobe before saving.';
       case 'recurrence-invalid':
         return 'Choose one of the supported recurrence options before saving.';
       case 'not-ready':

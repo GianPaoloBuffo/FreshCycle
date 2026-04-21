@@ -9,11 +9,13 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"testing"
+	"time"
 
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/auth"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/garments"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/schedules"
 )
 
 var testAllowedOrigins = []string{"http://localhost:19006", "https://*.vercel.app"}
@@ -36,6 +38,31 @@ type stubGarmentStore struct {
 	lastUserID      string
 	lastGarmentID   string
 	lastListOptions garments.ListOptions
+}
+
+type stubScheduleStore struct {
+	result         schedules.Schedule
+	list           []schedules.Schedule
+	err            error
+	last           schedules.CreateInput
+	lastUserID     string
+	lastScheduleID string
+}
+
+func (s *stubScheduleStore) CreateSchedule(_ context.Context, input schedules.CreateInput) (schedules.Schedule, error) {
+	s.last = input
+	return s.result, s.err
+}
+
+func (s *stubScheduleStore) DeleteSchedule(_ context.Context, userID string, scheduleID string) error {
+	s.lastUserID = userID
+	s.lastScheduleID = scheduleID
+	return s.err
+}
+
+func (s *stubScheduleStore) ListSchedules(_ context.Context, userID string) ([]schedules.Schedule, error) {
+	s.lastUserID = userID
+	return s.list, s.err
 }
 
 func (s *stubGarmentStore) CreateGarment(_ context.Context, input garments.CreateInput) (garments.Garment, error) {
@@ -397,6 +424,191 @@ func TestGetGarmentRouteReturnsNotFound(t *testing.T) {
 
 	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"garment_not_found"`)) {
 		t.Fatalf("expected garment_not_found response body, got %s", recorder.Body.String())
+	}
+}
+
+func TestCreateScheduleRoute(t *testing.T) {
+	t.Parallel()
+
+	store := &stubScheduleStore{
+		result: schedules.Schedule{
+			ID:               "schedule-123",
+			UserID:           "user-123",
+			Name:             "Weekly towels",
+			Recurrence:       "weekly:monday",
+			GarmentIDs:       []string{"29ce43cd-f095-476d-a7cb-1ee7850c14f1"},
+			RemindersEnabled: true,
+			CreatedAt:        time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC),
+		},
+	}
+
+	requestBody := bytes.NewBufferString(`{
+		"name":"Weekly towels",
+		"recurrence":"weekly:monday",
+		"garment_ids":["29ce43cd-f095-476d-a7cb-1ee7850c14f1"],
+		"reminders_enabled":true
+	}`)
+	request := httptest.NewRequest(http.MethodPost, "/schedules", requestBody)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}, store).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusCreated, recorder.Code, recorder.Body.String())
+	}
+
+	if store.last.UserID != "user-123" {
+		t.Fatalf("expected user id user-123, got %s", store.last.UserID)
+	}
+
+	if store.last.Name != "Weekly towels" || store.last.Recurrence != "weekly:monday" {
+		t.Fatalf("expected schedule fields to be forwarded, got %#v", store.last)
+	}
+
+	if len(store.last.GarmentIDs) != 1 || store.last.GarmentIDs[0] != "29ce43cd-f095-476d-a7cb-1ee7850c14f1" {
+		t.Fatalf("expected garment ids to be forwarded, got %#v", store.last.GarmentIDs)
+	}
+
+	var response schedules.Schedule
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.ID != "schedule-123" {
+		t.Fatalf("expected schedule id schedule-123, got %s", response.ID)
+	}
+}
+
+func TestCreateScheduleRouteRejectsInvalidRecurrence(t *testing.T) {
+	t.Parallel()
+
+	store := &stubScheduleStore{
+		err: schedules.ErrInvalidRecurrence,
+	}
+	requestBody := bytes.NewBufferString(`{
+		"name":"Weekly towels",
+		"recurrence":"monthly",
+		"garment_ids":["29ce43cd-f095-476d-a7cb-1ee7850c14f1"]
+	}`)
+	request := httptest.NewRequest(http.MethodPost, "/schedules", requestBody)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}, store).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"invalid_recurrence"`)) {
+		t.Fatalf("expected invalid_recurrence response body, got %s", recorder.Body.String())
+	}
+}
+
+func TestListSchedulesRoute(t *testing.T) {
+	t.Parallel()
+
+	store := &stubScheduleStore{
+		list: []schedules.Schedule{
+			{
+				ID:               "schedule-123",
+				UserID:           "user-123",
+				Name:             "Weekly towels",
+				Recurrence:       "weekly:monday",
+				GarmentIDs:       []string{"29ce43cd-f095-476d-a7cb-1ee7850c14f1"},
+				RemindersEnabled: true,
+				CreatedAt:        time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/schedules", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}, store).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	if store.lastUserID != "user-123" {
+		t.Fatalf("expected user id user-123, got %s", store.lastUserID)
+	}
+
+	var response []schedules.Schedule
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(response) != 1 || response[0].Name != "Weekly towels" {
+		t.Fatalf("expected saved schedule response, got %#v", response)
+	}
+}
+
+func TestListSchedulesRouteRejectsMissingAuth(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodGet, "/schedules", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		err: auth.ErrMissingAccessToken,
+	}, &stubScheduleStore{}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"auth_required"`)) {
+		t.Fatalf("expected auth_required response body, got %s", recorder.Body.String())
+	}
+}
+
+func TestDeleteScheduleRoute(t *testing.T) {
+	t.Parallel()
+
+	store := &stubScheduleStore{}
+	request := httptest.NewRequest(http.MethodDelete, "/schedules/29ce43cd-f095-476d-a7cb-1ee7850c14f1", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}, store).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNoContent, recorder.Code, recorder.Body.String())
+	}
+
+	if store.lastUserID != "user-123" || store.lastScheduleID != "29ce43cd-f095-476d-a7cb-1ee7850c14f1" {
+		t.Fatalf("expected ownership-safe delete, got user=%q schedule=%q", store.lastUserID, store.lastScheduleID)
+	}
+}
+
+func TestDeleteScheduleRouteReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	store := &stubScheduleStore{
+		err: schedules.ErrScheduleNotFound,
+	}
+	request := httptest.NewRequest(http.MethodDelete, "/schedules/29ce43cd-f095-476d-a7cb-1ee7850c14f1", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}, store).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"schedule_not_found"`)) {
+		t.Fatalf("expected schedule_not_found response body, got %s", recorder.Body.String())
 	}
 }
 
