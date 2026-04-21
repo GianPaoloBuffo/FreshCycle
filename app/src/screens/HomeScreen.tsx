@@ -13,6 +13,11 @@ import {
 
 import { AppScreen } from '@/components/AppScreen';
 import { palette } from '@/constants/theme';
+import { fetchSchedules } from '@/features/schedules/fetchSchedules';
+import { formatRecurrenceLabel } from '@/features/schedules/form';
+import { getSchedulesDueToday } from '@/features/schedules/dueToday';
+import { logSchedulesError, logSchedulesEvent } from '@/features/schedules/observability';
+import { LaundrySchedule } from '@/features/schedules/types';
 import { fetchGarments } from '@/features/wardrobe/fetchGarments';
 import { groupGarments } from '@/features/wardrobe/groupGarments';
 import { logWardrobeError, logWardrobeEvent } from '@/features/wardrobe/observability';
@@ -32,16 +37,23 @@ export function HomeScreen() {
   const { authReady, loading, session, signOut } = useAuth();
   const { width } = useWindowDimensions();
   const [garments, setGarments] = useState<WardrobeGarment[]>([]);
+  const [schedules, setSchedules] = useState<LaundrySchedule[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isFetchingSchedules, setIsFetchingSchedules] = useState(false);
+  const [isRefreshingSchedules, setIsRefreshingSchedules] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [scheduleFetchError, setScheduleFetchError] = useState<string | null>(null);
   const [groupingMode, setGroupingMode] = useState<WardrobeGroupingMode>('flat');
   const userEmail = session?.user.email ?? null;
   const isCompact = width < 640;
   const canLoadWardrobe = authReady && !loading && Boolean(session);
   const lastLoadedAccessTokenRef = useRef<string | null>(null);
+  const lastLoadedSchedulesAccessTokenRef = useRef<string | null>(null);
   let groupedSections: WardrobeGroupSection[] = [];
   let groupingError = false;
+  let todaySchedules: LaundrySchedule[] = [];
+  let todaySchedulesError = false;
 
   try {
     groupedSections = groupGarments(garments, groupingMode);
@@ -50,6 +62,15 @@ export function HomeScreen() {
     logWardrobeError('wardrobe_grouping_failed', error, {
       groupingMode,
       garmentCount: garments.length,
+    });
+  }
+
+  try {
+    todaySchedules = getSchedulesDueToday(schedules);
+  } catch (error) {
+    todaySchedulesError = true;
+    logSchedulesError('today_schedules_failed', error, {
+      scheduleCount: schedules.length,
     });
   }
 
@@ -96,13 +117,67 @@ export function HomeScreen() {
     }
   }
 
+  async function loadSchedules(accessToken: string, reason: 'initial' | 'refresh') {
+    if (reason === 'refresh') {
+      setIsRefreshingSchedules(true);
+    } else {
+      setIsFetchingSchedules(true);
+      setScheduleFetchError(null);
+    }
+
+    logSchedulesEvent('schedules_fetch_started', {
+      hasExistingSchedules: schedules.length > 0,
+      reason,
+      surface: 'home-today',
+    });
+
+    try {
+      const nextSchedules = await fetchSchedules({
+        accessToken,
+      });
+
+      const nextTodaySchedules = getSchedulesDueToday(nextSchedules);
+      startTransition(() => {
+        setSchedules(nextSchedules);
+        setScheduleFetchError(null);
+      });
+
+      logSchedulesEvent('schedules_fetch_succeeded', {
+        scheduleCount: nextSchedules.length,
+        surface: 'home-today',
+      });
+      logSchedulesEvent('today_schedules_evaluated', {
+        dueTodayCount: nextTodaySchedules.length,
+        scheduleCount: nextSchedules.length,
+      });
+    } catch (error) {
+      setScheduleFetchError(
+        reason === 'refresh'
+          ? "FreshCycle could not refresh today's schedules right now."
+          : describeSchedulesError(error)
+      );
+      logSchedulesError('schedules_fetch_failed', error, {
+        reason,
+        surface: 'home-today',
+      });
+    } finally {
+      setIsFetchingSchedules(false);
+      setIsRefreshingSchedules(false);
+    }
+  }
+
   useEffect(() => {
     if (!canLoadWardrobe) {
       setGarments([]);
+      setSchedules([]);
       setFetchError(null);
+      setScheduleFetchError(null);
       setIsFetching(false);
       setIsRefreshing(false);
+      setIsFetchingSchedules(false);
+      setIsRefreshingSchedules(false);
       lastLoadedAccessTokenRef.current = null;
+      lastLoadedSchedulesAccessTokenRef.current = null;
       return;
     }
 
@@ -113,6 +188,11 @@ export function HomeScreen() {
 
     lastLoadedAccessTokenRef.current = accessToken;
     void loadGarments(accessToken, 'initial');
+
+    if (lastLoadedSchedulesAccessTokenRef.current !== accessToken) {
+      lastLoadedSchedulesAccessTokenRef.current = accessToken;
+      void loadSchedules(accessToken, 'initial');
+    }
   }, [canLoadWardrobe, session?.access_token]);
 
   return (
@@ -122,13 +202,14 @@ export function HomeScreen() {
         refreshControl={
           canLoadWardrobe ? (
             <RefreshControl
-              refreshing={isRefreshing}
+              refreshing={isRefreshing || isRefreshingSchedules}
               onRefresh={() => {
                 if (!session?.access_token) {
                   return;
                 }
 
                 void loadGarments(session.access_token, 'refresh');
+                void loadSchedules(session.access_token, 'refresh');
               }}
               tintColor={palette.accent}
             />
@@ -160,6 +241,65 @@ export function HomeScreen() {
             ) : null}
           </View>
         </View>
+
+        {canLoadWardrobe ? (
+          <View style={[styles.card, styles.todayCard]}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.cardTitle}>Today</Text>
+              <Text style={styles.meta}>
+                {todaySchedules.length} due
+              </Text>
+            </View>
+
+            {isFetchingSchedules && schedules.length === 0 ? (
+              <>
+                <ActivityIndicator color={palette.accent} />
+                <Text style={styles.meta}>Checking today's schedules...</Text>
+              </>
+            ) : null}
+
+            {scheduleFetchError ? (
+              <>
+                <Text style={styles.meta}>{scheduleFetchError}</Text>
+                <Link href={'/schedules' as never} style={[styles.link, isCompact && styles.linkCompact]}>
+                  Open schedules
+                </Link>
+              </>
+            ) : null}
+
+            {!isFetchingSchedules && !scheduleFetchError && todaySchedulesError ? (
+              <Text style={styles.meta}>
+                FreshCycle could not evaluate due-today schedules. Open schedules to review them manually.
+              </Text>
+            ) : null}
+
+            {!isFetchingSchedules && !scheduleFetchError && !todaySchedulesError && todaySchedules.length === 0 ? (
+              <>
+                <Text style={styles.meta}>
+                  Nothing is due today. Add a recurring schedule when you want FreshCycle to surface repeat laundry jobs here.
+                </Text>
+                <Link href={'/new-schedule' as never} style={[styles.link, isCompact && styles.linkCompact]}>
+                  Create a schedule
+                </Link>
+              </>
+            ) : null}
+
+            {!scheduleFetchError && !todaySchedulesError && todaySchedules.length > 0
+              ? todaySchedules.map((schedule) => (
+                  <View key={schedule.id} style={styles.todayScheduleCard}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.garmentName}>{schedule.name}</Text>
+                      <Text style={styles.badge}>{formatRecurrenceLabel(schedule.recurrence)}</Text>
+                    </View>
+                    <Text style={styles.meta}>
+                      {schedule.garment_ids.length} garment{schedule.garment_ids.length === 1 ? '' : 's'} tracked •{' '}
+                      {schedule.reminders_enabled ? 'reminders on' : 'reminders off'}
+                    </Text>
+                  </View>
+                ))
+              : null}
+          </View>
+        ) : null}
 
         {!authReady ? (
           <View style={styles.card}>
@@ -352,6 +492,23 @@ function describeWardrobeError(error: unknown) {
   return 'FreshCycle could not load your wardrobe right now. Try again in a moment.';
 }
 
+function describeSchedulesError(error: unknown) {
+  if (error instanceof Error) {
+    switch (error.message) {
+      case 'auth-required':
+        return 'Sign in again before loading schedules.';
+      case 'api-unavailable':
+        return 'Set `EXPO_PUBLIC_API_BASE_URL` so FreshCycle knows where to load schedules from.';
+      case 'not-ready':
+        return 'Schedule sync is not live on this environment yet.';
+      default:
+        return "FreshCycle could not load today's schedules right now. Try again in a moment.";
+    }
+  }
+
+  return "FreshCycle could not load today's schedules right now. Try again in a moment.";
+}
+
 function formatCareMethod(careMethod: string) {
   switch (careMethod) {
     case 'dry_clean':
@@ -457,6 +614,17 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     marginBottom: 20,
+  },
+  todayCard: {
+    backgroundColor: '#e5eddc',
+  },
+  todayScheduleCard: {
+    backgroundColor: '#f7f2e8',
+    borderColor: palette.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
+    padding: 14,
   },
   cardTitle: {
     color: palette.ink,

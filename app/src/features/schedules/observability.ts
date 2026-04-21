@@ -5,6 +5,8 @@ type SchedulesEventName =
   | 'schedule_delete_started'
   | 'schedule_delete_succeeded'
   | 'schedule_delete_failed'
+  | 'today_schedules_evaluated'
+  | 'today_schedules_failed'
   | 'schedules_navigation_opened'
   | 'new_schedule_opened'
   | 'new_schedule_garments_fetch_started'
