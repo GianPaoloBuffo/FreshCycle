@@ -128,7 +128,6 @@ export function SchedulesScreen() {
       await deleteSchedule(scheduleId, {
         accessToken: session.access_token,
       });
-      await cancelLocalNotificationsForSchedule(scheduleId);
 
       startTransition(() => {
         setSchedules((currentSchedules) =>
@@ -139,6 +138,16 @@ export function SchedulesScreen() {
       logSchedulesEvent('schedule_delete_succeeded', {
         scheduleId,
       });
+
+      try {
+        await cancelLocalNotificationsForSchedule(scheduleId);
+      } catch (error) {
+        setDeleteError(describeDeleteError(error));
+        logSchedulesError('schedule_delete_failed', error, {
+          reason: 'local-notification-cancel-failed',
+          scheduleId,
+        });
+      }
     } catch (error) {
       setDeleteError(describeDeleteError(error));
       logSchedulesError('schedule_delete_failed', error, {
