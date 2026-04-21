@@ -2,8 +2,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
+import { configureNotificationHandler } from '@/features/notifications/localNotifications';
 import { AuthProvider } from '@/providers/AuthProvider';
 export { ErrorBoundary } from 'expo-router';
+
+configureNotificationHandler();
 
 export default function RootLayout() {
   return (

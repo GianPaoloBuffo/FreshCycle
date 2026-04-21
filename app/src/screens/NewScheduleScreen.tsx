@@ -27,6 +27,10 @@ import { logSchedulesError, logSchedulesEvent } from '@/features/schedules/obser
 import { ScheduleFormValues } from '@/features/schedules/types';
 import { fetchGarments } from '@/features/wardrobe/fetchGarments';
 import { WardrobeGarment } from '@/features/wardrobe/types';
+import {
+  registerForScheduleNotifications,
+  scheduleLocalNotificationsForSchedule,
+} from '@/features/notifications/localNotifications';
 import { useAuth } from '@/hooks/useAuth';
 import { getAppEnv } from '@/lib/env';
 
@@ -185,7 +189,30 @@ export function NewScheduleScreen() {
         accessToken: session?.access_token ?? null,
       });
 
-      setSuccessMessage(`Saved "${savedSchedule.name}" with ${formatRecurrenceLabel(savedSchedule.recurrence)} reminders.`);
+      let reminderMessage = savedSchedule.reminders_enabled
+        ? 'Reminder setup is pending.'
+        : 'Reminders are disabled for this schedule.';
+
+      if (savedSchedule.reminders_enabled) {
+        try {
+          await registerForScheduleNotifications(session?.user.id, {});
+          const notificationIds = await scheduleLocalNotificationsForSchedule(savedSchedule);
+          reminderMessage =
+            notificationIds.length > 0
+              ? `${notificationIds.length} local reminder${notificationIds.length === 1 ? '' : 's'} scheduled.`
+              : 'No local reminders were scheduled yet.';
+        } catch (error) {
+          reminderMessage = describeNotificationSetupError(error);
+          logSchedulesError('new_schedule_submission_failed', error, {
+            reason: 'notification-setup-failed',
+            scheduleId: savedSchedule.id,
+          });
+        }
+      }
+
+      setSuccessMessage(
+        `Saved "${savedSchedule.name}" with ${formatRecurrenceLabel(savedSchedule.recurrence)} cadence. ${reminderMessage}`
+      );
       logSchedulesEvent('new_schedule_submission_succeeded', {
         scheduleId: savedSchedule.id,
         garmentCount: savedSchedule.garment_ids.length,
@@ -500,6 +527,25 @@ function describeSaveError(error: unknown) {
   }
 
   return 'FreshCycle could not save the schedule right now. Try again in a moment.';
+}
+
+function describeNotificationSetupError(error: unknown) {
+  if (error instanceof Error) {
+    switch (error.message) {
+      case 'notifications-permission-denied':
+        return 'Schedule saved, but notification permission was denied. You can enable reminders later from device settings.';
+      case 'auth-required':
+        return 'Schedule saved, but FreshCycle could not link reminders to your account session.';
+      case 'push-token-save-failed':
+        return 'Schedule saved, but FreshCycle could not store this device token for reminders.';
+      case 'local-notification-schedule-failed':
+        return 'Schedule saved, but local reminders could not be scheduled on this device.';
+      default:
+        return 'Schedule saved, but reminder setup could not finish on this device.';
+    }
+  }
+
+  return 'Schedule saved, but reminder setup could not finish on this device.';
 }
 
 const styles = StyleSheet.create({
