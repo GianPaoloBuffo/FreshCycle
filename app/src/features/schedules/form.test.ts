@@ -11,6 +11,7 @@ describe('schedule form helpers', () => {
     expect(createInitialScheduleFormValues()).toEqual({
       name: '',
       recurrence: 'daily',
+      startsOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       garmentIds: [],
       remindersEnabled: true,
     });
@@ -21,6 +22,7 @@ describe('schedule form helpers', () => {
       validateScheduleDraft({
         name: '   ',
         recurrence: 'daily',
+        startsOn: '2026-04-20',
         garmentIds: ['garment-1'],
         remindersEnabled: true,
       }).name
@@ -32,6 +34,7 @@ describe('schedule form helpers', () => {
       validateScheduleDraft({
         name: 'Weekly towels',
         recurrence: 'daily',
+        startsOn: '2026-04-20',
         garmentIds: [],
         remindersEnabled: true,
       }).garmentIds
@@ -43,9 +46,22 @@ describe('schedule form helpers', () => {
       validateScheduleDraft({
         name: 'Weekly towels',
         recurrence: 'monthly',
+        startsOn: '2026-04-20',
         garmentIds: ['garment-1'],
         remindersEnabled: true,
       }).recurrence
+    ).toBeTruthy();
+  });
+
+  it('requires a valid local start date', () => {
+    expect(
+      validateScheduleDraft({
+        name: 'Weekly towels',
+        recurrence: 'daily',
+        startsOn: '2026-99-99',
+        garmentIds: ['garment-1'],
+        remindersEnabled: true,
+      }).startsOn
     ).toBeTruthy();
   });
 
@@ -54,12 +70,14 @@ describe('schedule form helpers', () => {
       buildCreateSchedulePayload({
         name: '  Weekly towels  ',
         recurrence: 'fortnightly',
+        startsOn: '2026-04-20',
         garmentIds: ['garment-1', 'garment-1', 'garment-2'],
         remindersEnabled: false,
       })
     ).toEqual({
       name: 'Weekly towels',
       recurrence: 'fortnightly',
+      starts_on: '2026-04-20',
       garment_ids: ['garment-1', 'garment-2'],
       reminders_enabled: false,
     });

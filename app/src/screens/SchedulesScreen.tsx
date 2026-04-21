@@ -291,6 +291,12 @@ export function SchedulesScreen() {
                   <Text style={styles.detailValue}>{formatRecurrence(schedule.recurrence)}</Text>
                 </View>
                 <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Starts on</Text>
+                  <Text style={styles.detailValue}>
+                    {schedule.starts_on ? formatCreatedAt(schedule.starts_on) : 'Next saved occurrence'}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Tracked garments</Text>
                   <Text style={styles.detailValue}>
                     {schedule.garment_ids.length} garment{schedule.garment_ids.length === 1 ? '' : 's'}

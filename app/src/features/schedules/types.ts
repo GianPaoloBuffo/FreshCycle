@@ -3,6 +3,7 @@ export type LaundrySchedule = {
   user_id: string;
   name: string;
   recurrence: string;
+  starts_on: string | null;
   garment_ids: string[];
   reminders_enabled: boolean;
   created_at: string;
@@ -11,6 +12,7 @@ export type LaundrySchedule = {
 export type CreateSchedulePayload = {
   name: string;
   recurrence: string;
+  starts_on: string;
   garment_ids: string[];
   reminders_enabled: boolean;
 };
@@ -18,6 +20,7 @@ export type CreateSchedulePayload = {
 export type ScheduleFormValues = {
   name: string;
   recurrence: string;
+  startsOn: string;
   garmentIds: string[];
   remindersEnabled: boolean;
 };

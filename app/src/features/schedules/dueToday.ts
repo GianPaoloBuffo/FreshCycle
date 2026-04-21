@@ -29,7 +29,9 @@ export function isScheduleDueToday(schedule: LaundrySchedule, today: Date = new 
   }
 
   if (recurrence === 'fortnightly') {
-    const startDate = startOfLocalDay(new Date(schedule.created_at));
+    const startDate = startOfLocalDay(
+      new Date(schedule.starts_on ? `${schedule.starts_on}T00:00:00` : schedule.created_at)
+    );
     const todayStart = startOfLocalDay(today);
     const elapsedDays = Math.floor((todayStart.getTime() - startDate.getTime()) / 86400000);
 

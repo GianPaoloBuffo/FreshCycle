@@ -9,6 +9,7 @@ type CreateInput struct {
 	UserID           string
 	Name             string
 	Recurrence       string
+	StartsOn         *string
 	GarmentIDs       []string
 	RemindersEnabled bool
 }
@@ -18,6 +19,7 @@ type Schedule struct {
 	UserID           string    `json:"user_id"`
 	Name             string    `json:"name"`
 	Recurrence       string    `json:"recurrence"`
+	StartsOn         *string   `json:"starts_on"`
 	GarmentIDs       []string  `json:"garment_ids"`
 	RemindersEnabled bool      `json:"reminders_enabled"`
 	CreatedAt        time.Time `json:"created_at"`

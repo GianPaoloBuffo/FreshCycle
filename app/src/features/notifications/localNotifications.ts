@@ -122,6 +122,7 @@ export async function scheduleLocalNotificationsForSchedule(
     const occurrences = computeUpcomingReminderOccurrences(schedule.recurrence, {
       count: deps.count ?? 4,
       from: deps.from,
+      startDate: schedule.starts_on ?? schedule.created_at,
     });
     const notificationIds = [];
 

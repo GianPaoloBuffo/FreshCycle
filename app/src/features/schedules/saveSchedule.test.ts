@@ -6,6 +6,7 @@ describe('saveSchedule', () => {
   const payload = {
     name: 'Weekly towels',
     recurrence: 'weekly:monday',
+    starts_on: '2026-04-20',
     garment_ids: ['garment-1', 'garment-2'],
     reminders_enabled: true,
   };

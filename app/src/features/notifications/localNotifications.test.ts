@@ -31,6 +31,7 @@ const schedule = {
   user_id: 'user-123',
   name: 'Weekly towels',
   recurrence: 'daily',
+  starts_on: '2026-04-20',
   garment_ids: ['garment-1'],
   reminders_enabled: true,
   created_at: '2026-04-20T09:00:00.000Z',

@@ -436,6 +436,7 @@ func TestCreateScheduleRoute(t *testing.T) {
 			UserID:           "user-123",
 			Name:             "Weekly towels",
 			Recurrence:       "weekly:monday",
+			StartsOn:         pointerTo("2026-04-20"),
 			GarmentIDs:       []string{"29ce43cd-f095-476d-a7cb-1ee7850c14f1"},
 			RemindersEnabled: true,
 			CreatedAt:        time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC),
@@ -445,6 +446,7 @@ func TestCreateScheduleRoute(t *testing.T) {
 	requestBody := bytes.NewBufferString(`{
 		"name":"Weekly towels",
 		"recurrence":"weekly:monday",
+		"starts_on":"2026-04-20",
 		"garment_ids":["29ce43cd-f095-476d-a7cb-1ee7850c14f1"],
 		"reminders_enabled":true
 	}`)
@@ -466,6 +468,10 @@ func TestCreateScheduleRoute(t *testing.T) {
 
 	if store.last.Name != "Weekly towels" || store.last.Recurrence != "weekly:monday" {
 		t.Fatalf("expected schedule fields to be forwarded, got %#v", store.last)
+	}
+
+	if store.last.StartsOn == nil || *store.last.StartsOn != "2026-04-20" {
+		t.Fatalf("expected starts_on to be forwarded, got %#v", store.last.StartsOn)
 	}
 
 	if len(store.last.GarmentIDs) != 1 || store.last.GarmentIDs[0] != "29ce43cd-f095-476d-a7cb-1ee7850c14f1" {
@@ -520,6 +526,7 @@ func TestListSchedulesRoute(t *testing.T) {
 				UserID:           "user-123",
 				Name:             "Weekly towels",
 				Recurrence:       "weekly:monday",
+				StartsOn:         pointerTo("2026-04-20"),
 				GarmentIDs:       []string{"29ce43cd-f095-476d-a7cb-1ee7850c14f1"},
 				RemindersEnabled: true,
 				CreatedAt:        time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC),

@@ -3,6 +3,7 @@ type ReminderOccurrenceOptions = {
   from?: Date;
   hour?: number;
   minute?: number;
+  startDate?: string | Date | null;
 };
 
 const WEEKDAY_INDEX: Record<string, number> = {
@@ -33,7 +34,8 @@ export function computeUpcomingReminderOccurrences(
   }
 
   if (recurrence === 'fortnightly') {
-    return buildOccurrenceSeries(firstDailyOccurrence(from, hour, minute), count, 14);
+    const startDate = normalizeStartDate(options.startDate);
+    return buildOccurrenceSeries(firstFortnightlyOccurrence(from, startDate, hour, minute), count, 14);
   }
 
   if (recurrence.startsWith('weekly:')) {
@@ -71,6 +73,16 @@ function firstWeeklyOccurrence(from: Date, weekday: number, hour: number, minute
   return candidate;
 }
 
+function firstFortnightlyOccurrence(from: Date, startDate: Date, hour: number, minute: number) {
+  const candidate = atLocalTime(startDate, hour, minute);
+
+  while (candidate.getTime() <= from.getTime()) {
+    candidate.setDate(candidate.getDate() + 14);
+  }
+
+  return candidate;
+}
+
 function buildOccurrenceSeries(firstOccurrence: Date, count: number, intervalDays: number) {
   return Array.from({ length: count }, (_unused, index) => {
     const occurrence = new Date(firstOccurrence);
@@ -88,4 +100,17 @@ function atLocalTime(from: Date, hour: number, minute: number) {
 function parseWeeklyRecurrence(recurrence: string) {
   const weekdayName = recurrence.split(':')[1]?.trim().toLowerCase() ?? '';
   return WEEKDAY_INDEX[weekdayName] ?? null;
+}
+
+function normalizeStartDate(value: string | Date | null | undefined) {
+  if (!value) {
+    throw new Error('start-date-required');
+  }
+
+  const date = typeof value === 'string' ? new Date(`${value}T00:00:00`) : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('invalid-start-date');
+  }
+
+  return date;
 }

@@ -163,6 +163,13 @@ export function NewScheduleScreen() {
         });
       }
 
+      if (validationErrors.startsOn) {
+        setError('startsOn', {
+          message: validationErrors.startsOn,
+          type: 'manual',
+        });
+      }
+
       if (validationErrors.garmentIds) {
         setError('garmentIds', {
           message: validationErrors.garmentIds,
@@ -384,6 +391,30 @@ export function NewScheduleScreen() {
 
               <Controller
                 control={control}
+                name="startsOn"
+                render={({ field: { onBlur, onChange, value } }) => (
+                  <View style={styles.formField}>
+                    <Text style={styles.fieldLabel}>Start date</Text>
+                    <TextInput
+                      onBlur={onBlur}
+                      onChangeText={onChange}
+                      placeholder="2026-04-20"
+                      placeholderTextColor={palette.inkMuted}
+                      style={[styles.input, errors.startsOn && styles.inputError]}
+                      value={value}
+                    />
+                    <Text style={styles.meta}>
+                      Fortnightly reminders use this date as the two-week anchor.
+                    </Text>
+                    {errors.startsOn?.message ? (
+                      <Text style={styles.fieldError}>{errors.startsOn.message}</Text>
+                    ) : null}
+                  </View>
+                )}
+              />
+
+              <Controller
+                control={control}
                 name="remindersEnabled"
                 render={({ field: { onChange, value } }) => (
                   <View style={styles.toggleRow}>
@@ -521,6 +552,8 @@ function describeSaveError(error: unknown) {
         return 'Choose only garments from your own wardrobe before saving.';
       case 'recurrence-invalid':
         return 'Choose one of the supported recurrence options before saving.';
+      case 'start-date-invalid':
+        return 'Use YYYY-MM-DD for the schedule start date.';
       case 'not-ready':
         return 'The schedule builder is ready, but the schedules API arrives later in Phase 4. Save will start working once GP-39 lands.';
       default:

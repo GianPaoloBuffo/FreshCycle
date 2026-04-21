@@ -61,6 +61,8 @@ async function extractSaveErrorCode(response: Response) {
         return 'invalid-garment-id';
       case 'invalid_recurrence':
         return 'recurrence-invalid';
+      case 'invalid_start_date':
+        return 'start-date-invalid';
       case 'route_not_found':
         return 'not-ready';
       default:

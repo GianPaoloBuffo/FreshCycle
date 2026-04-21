@@ -14,6 +14,7 @@ import (
 type createScheduleRequest struct {
 	Name             string   `json:"name"`
 	Recurrence       string   `json:"recurrence"`
+	StartsOn         *string  `json:"starts_on"`
 	GarmentIDs       []string `json:"garment_ids"`
 	RemindersEnabled *bool    `json:"reminders_enabled"`
 }
@@ -41,6 +42,7 @@ func CreateSchedule(store schedules.Store) http.HandlerFunc {
 			UserID:           user.ID,
 			Name:             payload.Name,
 			Recurrence:       payload.Recurrence,
+			StartsOn:         normalizeOptionalString(payload.StartsOn),
 			GarmentIDs:       payload.GarmentIDs,
 			RemindersEnabled: remindersEnabled,
 		})
@@ -52,6 +54,8 @@ func CreateSchedule(store schedules.Store) http.HandlerFunc {
 				writeJSONError(writer, http.StatusBadRequest, "garment_ids_required", "Choose at least one garment before saving.")
 			case errors.Is(err, schedules.ErrInvalidRecurrence):
 				writeJSONError(writer, http.StatusBadRequest, "invalid_recurrence", "Choose a supported recurrence before saving.")
+			case errors.Is(err, schedules.ErrInvalidStartDate):
+				writeJSONError(writer, http.StatusBadRequest, "invalid_start_date", "Use YYYY-MM-DD for the schedule start date.")
 			case errors.Is(err, schedules.ErrInvalidGarmentID):
 				writeJSONError(writer, http.StatusBadRequest, "invalid_garment_id", "Choose only garments from your wardrobe before saving.")
 			default:

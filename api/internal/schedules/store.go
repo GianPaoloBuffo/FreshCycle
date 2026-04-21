@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,6 +49,11 @@ func (s PostgresStore) CreateSchedule(ctx context.Context, input CreateInput) (S
 		return Schedule{}, ErrInvalidRecurrence
 	}
 
+	startsOn, err := normalizeStartDate(input.StartsOn)
+	if err != nil {
+		return Schedule{}, err
+	}
+
 	for _, garmentID := range garmentIDs {
 		if !canonicalUUIDPattern.MatchString(garmentID) {
 			return Schedule{}, ErrInvalidGarmentID
@@ -67,14 +73,16 @@ func (s PostgresStore) CreateSchedule(ctx context.Context, input CreateInput) (S
 			user_id,
 			name,
 			recurrence,
+			starts_on,
 			reminder_enabled
 		)
-		values ($1, $2, $3, $4)
-		returning id, user_id, name, recurrence, reminder_enabled, created_at
+		values ($1, $2, $3, coalesce($4::date, current_date), $5)
+		returning id, user_id, name, recurrence, to_char(starts_on, 'YYYY-MM-DD'), reminder_enabled, created_at
 	`,
 		strings.TrimSpace(input.UserID),
 		name,
 		recurrence,
+		startsOn,
 		input.RemindersEnabled,
 	)
 
@@ -84,6 +92,7 @@ func (s PostgresStore) CreateSchedule(ctx context.Context, input CreateInput) (S
 		&schedule.UserID,
 		&schedule.Name,
 		&schedule.Recurrence,
+		&schedule.StartsOn,
 		&schedule.RemindersEnabled,
 		&schedule.CreatedAt,
 	); err != nil {
@@ -125,6 +134,7 @@ func (s PostgresStore) ListSchedules(ctx context.Context, userID string) ([]Sche
 			schedules.user_id,
 			schedules.name,
 			schedules.recurrence,
+			to_char(schedules.starts_on, 'YYYY-MM-DD'),
 			schedules.reminder_enabled,
 			schedules.created_at,
 			coalesce(
@@ -152,6 +162,7 @@ func (s PostgresStore) ListSchedules(ctx context.Context, userID string) ([]Sche
 			&schedule.UserID,
 			&schedule.Name,
 			&schedule.Recurrence,
+			&schedule.StartsOn,
 			&schedule.RemindersEnabled,
 			&schedule.CreatedAt,
 			&schedule.GarmentIDs,
@@ -227,4 +238,17 @@ func isValidRecurrence(recurrence string) bool {
 	weekday := strings.TrimSpace(strings.TrimPrefix(recurrence, "weekly:"))
 	_, ok := supportedWeeklyDays[weekday]
 	return ok
+}
+
+func normalizeStartDate(value *string) (*string, error) {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil, nil
+	}
+
+	trimmed := strings.TrimSpace(*value)
+	if _, err := time.Parse("2006-01-02", trimmed); err != nil {
+		return nil, ErrInvalidStartDate
+	}
+
+	return &trimmed, nil
 }

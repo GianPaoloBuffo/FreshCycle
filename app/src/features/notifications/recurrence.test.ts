@@ -49,6 +49,7 @@ describe('computeUpcomingReminderOccurrences', () => {
       from: new Date('2026-04-20T08:00:00'),
       hour: 9,
       minute: 0,
+      startDate: '2026-04-06',
     });
 
     expect(occurrences.map((date) => date.toISOString())).toEqual([
@@ -59,5 +60,9 @@ describe('computeUpcomingReminderOccurrences', () => {
 
   it('rejects unsupported recurrence strings', () => {
     expect(() => computeUpcomingReminderOccurrences('monthly')).toThrow('invalid-recurrence');
+  });
+
+  it('requires a start date for fortnightly recurrence', () => {
+    expect(() => computeUpcomingReminderOccurrences('fortnightly')).toThrow('start-date-required');
   });
 });

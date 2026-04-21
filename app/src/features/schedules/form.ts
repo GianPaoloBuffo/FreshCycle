@@ -23,7 +23,7 @@ export const recurrenceOptions = [
   },
 ] as const;
 
-type ScheduleFormField = 'name' | 'recurrence' | 'garmentIds';
+type ScheduleFormField = 'name' | 'recurrence' | 'startsOn' | 'garmentIds';
 
 export type ScheduleFormErrors = Partial<Record<ScheduleFormField, string>>;
 
@@ -31,6 +31,7 @@ export function createInitialScheduleFormValues(): ScheduleFormValues {
   return {
     name: '',
     recurrence: recurrenceOptions[0].value,
+    startsOn: formatLocalDate(new Date()),
     garmentIds: [],
     remindersEnabled: true,
   };
@@ -48,6 +49,10 @@ export function validateScheduleDraft(values: ScheduleFormValues): ScheduleFormE
     errors.recurrence = 'Pick one of the supported recurrence options.';
   }
 
+  if (!isValidLocalDate(values.startsOn)) {
+    errors.startsOn = 'Use YYYY-MM-DD for the schedule start date.';
+  }
+
   if (values.garmentIds.length === 0) {
     errors.garmentIds = 'Choose at least one garment to track with this schedule.';
   }
@@ -59,6 +64,7 @@ export function buildCreateSchedulePayload(values: ScheduleFormValues): CreateSc
   return {
     name: values.name.trim(),
     recurrence: values.recurrence,
+    starts_on: values.startsOn,
     garment_ids: Array.from(new Set(values.garmentIds)),
     reminders_enabled: values.remindersEnabled,
   };
@@ -66,4 +72,21 @@ export function buildCreateSchedulePayload(values: ScheduleFormValues): CreateSc
 
 export function formatRecurrenceLabel(recurrence: string) {
   return recurrenceOptions.find((option) => option.value === recurrence)?.label ?? recurrence;
+}
+
+export function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function isValidLocalDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(date.getTime()) && formatLocalDate(date) === value;
 }
