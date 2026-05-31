@@ -101,7 +101,7 @@ func (p OpenAIParser) ParseLabel(ctx context.Context, input ParseLabelInput) (Pa
 		return ParseLabelResult{}, fmt.Errorf("decode OpenAI response: %w", err)
 	}
 
-	outputText := strings.TrimSpace(parsed.OutputText)
+	outputText := strings.TrimSpace(parsed.outputText())
 	if outputText == "" {
 		return ParseLabelResult{}, fmt.Errorf("%w: missing output_text", ErrUpstreamParseRejected)
 	}
@@ -151,7 +151,42 @@ type openAITextFormat struct {
 }
 
 type openAIResponsesResponse struct {
-	OutputText string `json:"output_text"`
+	OutputText string                     `json:"output_text"`
+	Output     []openAIResponseOutputItem `json:"output"`
+}
+
+type openAIResponseOutputItem struct {
+	Content []openAIResponseContentItem `json:"content"`
+	Type    string                      `json:"type"`
+}
+
+type openAIResponseContentItem struct {
+	Text string `json:"text"`
+	Type string `json:"type"`
+}
+
+func (r openAIResponsesResponse) outputText() string {
+	if strings.TrimSpace(r.OutputText) != "" {
+		return r.OutputText
+	}
+
+	for _, output := range r.Output {
+		if output.Type != "" && output.Type != "message" {
+			continue
+		}
+
+		for _, content := range output.Content {
+			if content.Type != "" && content.Type != "output_text" && content.Type != "text" {
+				continue
+			}
+
+			if strings.TrimSpace(content.Text) != "" {
+				return content.Text
+			}
+		}
+	}
+
+	return ""
 }
 
 var openAIResponseSchema = map[string]any{
