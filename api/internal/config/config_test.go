@@ -44,6 +44,94 @@ func TestValidateRequiresOpenAIKeyWhenProviderIsOpenAI(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsOCRAndGeminiConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.LoadFromMap(map[string]string{
+		"SUPABASE_DB_URL": "postgres://example",
+	})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.OCRTesseractPath != "tesseract" {
+		t.Fatalf("expected default tesseract path, got %q", cfg.OCRTesseractPath)
+	}
+	if cfg.OCRLanguages != "eng+spa" {
+		t.Fatalf("expected default OCR languages, got %q", cfg.OCRLanguages)
+	}
+	if cfg.LabelParserFallbackProvider != "gemini" {
+		t.Fatalf("expected default fallback provider, got %q", cfg.LabelParserFallbackProvider)
+	}
+	if cfg.GeminiModel != "gemini-3.1-flash-lite" {
+		t.Fatalf("expected default Gemini model, got %q", cfg.GeminiModel)
+	}
+	if cfg.GeminiBaseURL != "https://generativelanguage.googleapis.com/v1beta" {
+		t.Fatalf("expected default Gemini base URL, got %q", cfg.GeminiBaseURL)
+	}
+}
+
+func TestValidateAllowsOCRWithoutGeminiKey(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Port:                "8080",
+		DatabaseURL:         "postgres://example",
+		LabelParserProvider: "ocr",
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected OCR config without Gemini key to validate, got %v", err)
+	}
+}
+
+func TestValidateRequiresGeminiKeyWhenProviderIsHybrid(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Port:                        "8080",
+		DatabaseURL:                 "postgres://example",
+		LabelParserProvider:         "hybrid",
+		LabelParserFallbackProvider: "gemini",
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error when GEMINI_API_KEY is missing for the hybrid parser")
+	}
+}
+
+func TestValidateRejectsUnsupportedHybridFallbackProvider(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Port:                        "8080",
+		DatabaseURL:                 "postgres://example",
+		LabelParserProvider:         "hybrid",
+		LabelParserFallbackProvider: "openai",
+		GeminiAPIKey:                "gemini-key",
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for unsupported hybrid fallback provider")
+	}
+}
+
+func TestValidateAllowsHybridWithGeminiKey(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Port:                        "8080",
+		DatabaseURL:                 "postgres://example",
+		LabelParserProvider:         "hybrid",
+		LabelParserFallbackProvider: "gemini",
+		GeminiAPIKey:                "gemini-key",
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected hybrid config to validate, got %v", err)
+	}
+}
+
 func TestSplitCSVEnvTrimsValues(t *testing.T) {
 	t.Parallel()
 

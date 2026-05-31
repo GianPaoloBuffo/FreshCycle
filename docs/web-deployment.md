@@ -85,12 +85,12 @@ Recommended Render steps:
 1. Create a new Blueprint or Web Service from this repository.
 2. Use the `freshcycle-api` service defined in [render.yaml](/Users/gp-macbook/Projects/FreshCycle/render.yaml).
 3. Set `SUPABASE_DB_URL`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY` in Render.
-4. Keep `LABEL_PARSER_PROVIDER=stub` for the first smoke test.
+4. Keep `LABEL_PARSER_PROVIDER=stub` for the first smoke test, or use `LABEL_PARSER_PROVIDER=ocr` if you want Tesseract parsing without an LLM.
 5. Once the service is live, copy its URL into Vercel as `EXPO_PUBLIC_API_BASE_URL`.
 6. Redeploy the Vercel app.
-7. Later, switch to `LABEL_PARSER_PROVIDER=openai` and add `OPENAI_API_KEY` when you're ready for real parsing.
+7. Later, switch to `LABEL_PARSER_PROVIDER=hybrid`, keep `LABEL_PARSER_FALLBACK_PROVIDER=gemini`, and add `GEMINI_API_KEY` when you're ready for OCR-first parsing with a low-confidence LLM fallback.
 
-The API now includes CORS support for local Expo web and `*.vercel.app` origins, so browser calls from Vercel previews and production can reach the hosted parser endpoint.
+The API now includes CORS support for local Expo web and `*.vercel.app` origins, so browser calls from Vercel previews and production can reach the hosted parser endpoint. The Render Blueprint uses the API Dockerfile so the service has Tesseract plus English and Spanish OCR language packs installed.
 
 ## Supabase hosted project setup
 

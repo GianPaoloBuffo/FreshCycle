@@ -121,11 +121,24 @@ The API loads `api/.env` and `api/.env.local` automatically if present.
 For the Phase 2 parser flow, these API env vars are useful:
 
 - `LABEL_PARSER_PROVIDER=stub` keeps local development deterministic without an AI provider.
+- `LABEL_PARSER_PROVIDER=ocr` enables local Tesseract OCR plus deterministic care-label text rules.
+- `LABEL_PARSER_PROVIDER=hybrid` runs OCR first and uses Gemini only for low-confidence labels.
+- `OCR_TESSERACT_PATH` defaults to `tesseract`.
+- `OCR_LANGUAGES` defaults to `eng+spa`; install matching Tesseract language packs before using `ocr` or `hybrid`.
+- `LABEL_PARSER_FALLBACK_PROVIDER=gemini` selects Gemini for the hybrid fallback.
+- `GEMINI_API_KEY` is required when using the hybrid parser.
+- `GEMINI_MODEL` optionally overrides the default `gemini-3.1-flash-lite` fallback model.
 - `LABEL_PARSER_PROVIDER=openai` enables the real parser endpoint.
 - `OPENAI_API_KEY` is required when using the OpenAI parser.
 - `OPENAI_MODEL` optionally overrides the default `gpt-4.1-mini` vision model.
 - `SUPABASE_URL` points the API at the Supabase Auth service for JWT validation.
 - `SUPABASE_SECRET_KEY` lets the API validate Supabase access tokens on protected routes.
+
+On macOS, install OCR dependencies with:
+
+```bash
+brew install tesseract tesseract-lang
+```
 
 To route the Expo app through the API-backed parser instead of the local fallback stub, set:
 

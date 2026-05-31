@@ -31,7 +31,13 @@ The API listens on `API_PORT`, defaulting to `8080`.
 
 - `SUPABASE_DB_URL`: Postgres connection string for your local or hosted Supabase database
 - `API_PORT`: optional HTTP port override
-- `LABEL_PARSER_PROVIDER`: optional, defaults to `stub`; set to `openai` for real parsing
+- `LABEL_PARSER_PROVIDER`: optional, defaults to `stub`; supported values are `stub`, `ocr`, `hybrid`, and `openai`
+- `OCR_TESSERACT_PATH`: optional, defaults to `tesseract`; used by `ocr` and `hybrid`
+- `OCR_LANGUAGES`: optional, defaults to `eng+spa`; install matching Tesseract language packs locally and in deployment
+- `LABEL_PARSER_FALLBACK_PROVIDER`: optional, defaults to `gemini`; used when `LABEL_PARSER_PROVIDER=hybrid`
+- `GEMINI_API_KEY`: required when `LABEL_PARSER_PROVIDER=hybrid`
+- `GEMINI_MODEL`: optional, defaults to `gemini-3.1-flash-lite`
+- `GEMINI_BASE_URL`: optional, defaults to `https://generativelanguage.googleapis.com/v1beta`
 - `OPENAI_API_KEY`: required when `LABEL_PARSER_PROVIDER=openai`
 - `OPENAI_MODEL`: optional, defaults to `gpt-4.1-mini`
 - `OPENAI_BASE_URL`: optional override for the Responses API URL
@@ -64,3 +70,15 @@ The response shape preserves the garment parsing contract used for the app revie
 ```
 
 For local development, the API entrypoint loads `api/.env.local` and `api/.env` automatically if present.
+
+## OCR-first parser
+
+`LABEL_PARSER_PROVIDER=ocr` runs Tesseract and deterministic text rules only. `LABEL_PARSER_PROVIDER=hybrid` runs the same OCR pass first, then calls Gemini only when OCR text is missing, low confidence, contradictory, or does not include recognizable care-label signals.
+
+Install Tesseract locally before using either OCR-backed mode. On macOS:
+
+```bash
+brew install tesseract tesseract-lang
+```
+
+The Docker deployment installs Tesseract plus English and Spanish language packs.
