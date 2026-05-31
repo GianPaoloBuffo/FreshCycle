@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -93,6 +94,7 @@ func (p OpenAIParser) ParseLabel(ctx context.Context, input ParseLabelInput) (Pa
 	}
 
 	if response.StatusCode >= http.StatusBadRequest {
+		log.Printf("openai label parser rejected request: status=%s body=%q", response.Status, truncateForLog(string(body), 1000))
 		return ParseLabelResult{}, fmt.Errorf("%w: OpenAI returned %s", ErrUpstreamParseRejected, response.Status)
 	}
 
@@ -103,6 +105,7 @@ func (p OpenAIParser) ParseLabel(ctx context.Context, input ParseLabelInput) (Pa
 
 	outputText := strings.TrimSpace(parsed.outputText())
 	if outputText == "" {
+		log.Printf("openai label parser response missing output text: body=%q", truncateForLog(string(body), 1000))
 		return ParseLabelResult{}, fmt.Errorf("%w: missing output_text", ErrUpstreamParseRejected)
 	}
 
@@ -120,6 +123,19 @@ func buildOpenAIPrompt(input ParseLabelInput) string {
 		input.Filename,
 		input.MIMEType,
 	)
+}
+
+func truncateForLog(value string, maxLength int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= maxLength {
+		return value
+	}
+
+	if maxLength <= 3 {
+		return value[:maxLength]
+	}
+
+	return value[:maxLength-3] + "..."
 }
 
 type openAIResponsesRequest struct {

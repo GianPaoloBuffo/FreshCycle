@@ -8,6 +8,7 @@ import (
 )
 
 const defaultPort = "8080"
+const defaultOpenAIModel = "gpt-4.1-mini"
 
 type Config struct {
 	Port                string
@@ -41,7 +42,7 @@ func LoadFromMap(values map[string]string) (Config, error) {
 		DatabaseURL:         lookup("SUPABASE_DB_URL"),
 		LabelParserProvider: getEnvFromLookup(lookup, "LABEL_PARSER_PROVIDER", "stub"),
 		OpenAIAPIKey:        lookup("OPENAI_API_KEY"),
-		OpenAIModel:         getEnvFromLookup(lookup, "OPENAI_MODEL", "gpt-5-mini"),
+		OpenAIModel:         getEnvFromLookup(lookup, "OPENAI_MODEL", defaultOpenAIModel),
 		OpenAIBaseURL:       getEnvFromLookup(lookup, "OPENAI_BASE_URL", ""),
 		AllowedOrigins:      splitCSVEnv(getEnvFromLookup(lookup, "API_ALLOWED_ORIGINS", defaultAllowedOrigins)),
 		SupabaseProjectURL:  getEnvFromLookup(lookup, "SUPABASE_URL", ""),

@@ -33,7 +33,7 @@ The API listens on `API_PORT`, defaulting to `8080`.
 - `API_PORT`: optional HTTP port override
 - `LABEL_PARSER_PROVIDER`: optional, defaults to `stub`; set to `openai` for real parsing
 - `OPENAI_API_KEY`: required when `LABEL_PARSER_PROVIDER=openai`
-- `OPENAI_MODEL`: optional, defaults to `gpt-5-mini`
+- `OPENAI_MODEL`: optional, defaults to `gpt-4.1-mini`
 - `OPENAI_BASE_URL`: optional override for the Responses API URL
 - `API_ALLOWED_ORIGINS`: optional comma-separated browser origins allowed to call the API; defaults to local Expo web origins plus `https://*.vercel.app`
 - `SUPABASE_URL`: required for validating Supabase access tokens on protected API routes
