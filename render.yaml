@@ -11,7 +11,7 @@ services:
       - key: API_PORT
         value: "10000"
       - key: LABEL_PARSER_PROVIDER
-        value: hybrid
+        value: ocr
       - key: LABEL_PARSER_FALLBACK_PROVIDER
         value: gemini
       - key: OCR_TESSERACT_PATH
