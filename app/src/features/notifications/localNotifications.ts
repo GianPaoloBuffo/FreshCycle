@@ -62,7 +62,7 @@ export async function registerForScheduleNotifications(
 
   const existingPermissions = await notificationsClient.getPermissionsAsync();
   const permissions =
-    existingPermissions.status === 'granted'
+    existingPermissions.granted
       ? existingPermissions
       : await notificationsClient.requestPermissionsAsync({
           ios: {
@@ -72,9 +72,10 @@ export async function registerForScheduleNotifications(
           },
         });
 
-  if (permissions.status !== 'granted') {
+  if (!permissions.granted) {
     logNotificationEvent('notification_permission_denied', {
-      status: permissions.status,
+      canAskAgain: permissions.canAskAgain,
+      granted: permissions.granted,
     });
     throw new Error('notifications-permission-denied');
   }

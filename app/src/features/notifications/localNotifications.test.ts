@@ -42,7 +42,7 @@ describe('registerForScheduleNotifications', () => {
     const savePushTokenImpl = vi.fn().mockResolvedValue(undefined);
     const token = await registerForScheduleNotifications('user-123', {
       notificationsClient: {
-        getPermissionsAsync: vi.fn().mockResolvedValue({ status: 'granted' }),
+        getPermissionsAsync: vi.fn().mockResolvedValue({ granted: true }),
         requestPermissionsAsync: vi.fn(),
         getExpoPushTokenAsync: vi.fn().mockResolvedValue({ data: 'ExponentPushToken[abc]' }),
       } as never,
@@ -57,8 +57,8 @@ describe('registerForScheduleNotifications', () => {
     await expect(
       registerForScheduleNotifications('user-123', {
         notificationsClient: {
-          getPermissionsAsync: vi.fn().mockResolvedValue({ status: 'undetermined' }),
-          requestPermissionsAsync: vi.fn().mockResolvedValue({ status: 'denied' }),
+          getPermissionsAsync: vi.fn().mockResolvedValue({ granted: false }),
+          requestPermissionsAsync: vi.fn().mockResolvedValue({ canAskAgain: false, granted: false }),
           getExpoPushTokenAsync: vi.fn(),
         } as never,
       })
