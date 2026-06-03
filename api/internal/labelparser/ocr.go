@@ -15,9 +15,12 @@ import (
 )
 
 const (
-	ocrPSMBlock      = "6"
-	ocrPSMSparseText = "11"
+	ocrPSMSingleColumn = "4"
+	ocrPSMBlock        = "6"
+	ocrPSMSparseText   = "11"
 )
+
+var ocrPSMModes = []string{ocrPSMSingleColumn, ocrPSMBlock, ocrPSMSparseText}
 
 type OCRExecutor interface {
 	RunTSV(ctx context.Context, input ParseLabelInput, pageSegmentationMode string) (string, error)
@@ -70,6 +73,10 @@ func (r TesseractRunner) RunTSV(ctx context.Context, input ParseLabelInput, page
 		"1",
 		"--psm",
 		pageSegmentationMode,
+		"-c",
+		"user_defined_dpi=300",
+		"-c",
+		"preserve_interword_spaces=1",
 		"tsv",
 	}
 	command := exec.CommandContext(ctx, path, args...)
@@ -130,17 +137,30 @@ func (p OCRParser) ParseLabelWithDetails(ctx context.Context, input ParseLabelIn
 		return OCRParseDetails{}, ErrProviderUnavailable
 	}
 
-	block, blockErr := p.runOCR(ctx, input, ocrPSMBlock)
-	sparse, sparseErr := p.runOCR(ctx, input, ocrPSMSparseText)
+	var best ocrRun
+	var hasBest bool
+	errors := make([]error, 0, len(ocrPSMModes))
 
-	if blockErr != nil && sparseErr != nil {
-		if errors.Is(blockErr, exec.ErrNotFound) || errors.Is(sparseErr, exec.ErrNotFound) {
+	for _, psm := range ocrPSMModes {
+		run, err := p.runOCR(ctx, input, psm)
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+
+		if !hasBest || ocrRunScore(run) > ocrRunScore(best) {
+			best = run
+			hasBest = true
+		}
+	}
+
+	if !hasBest {
+		if containsExecNotFound(errors) {
 			return OCRParseDetails{}, fmt.Errorf("%w: tesseract executable not found", ErrProviderUnavailable)
 		}
 		return OCRParseDetails{}, fmt.Errorf("%w: OCR failed", ErrUpstreamParseRejected)
 	}
 
-	best := chooseOCRRun(block, sparse)
 	result, evidence := parseCareLabelText(best.Text)
 	details := OCRParseDetails{
 		Result:            result,
@@ -154,6 +174,15 @@ func (p OCRParser) ParseLabelWithDetails(ctx context.Context, input ParseLabelIn
 	details.FallbackReasons = details.evaluateFallbackReasons()
 
 	return details, nil
+}
+
+func containsExecNotFound(values []error) bool {
+	for _, err := range values {
+		if errors.Is(err, exec.ErrNotFound) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p OCRParser) runOCR(ctx context.Context, input ParseLabelInput, psm string) (ocrRun, error) {

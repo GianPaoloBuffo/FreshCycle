@@ -14,28 +14,31 @@ type careRuleEvidence struct {
 func parseCareLabelText(text string) (ParseLabelResult, careRuleEvidence) {
 	rawText := normalizeOCRText(text)
 	normalized := normalizeForRules(rawText)
+	compact := compactForRules(normalized)
 
 	washTemp := inferWashTemperature(normalized)
-	negativeWash := containsAny(normalized, "do not wash", "dont wash", "no lavar")
+	negativeWash := containsAny(normalized, "do not wash", "dont wash", "no lavar") || containsAny(compact, "donotwash", "dontwash", "nolavar")
 	handWashOnly := containsAny(normalized, "hand wash only", "hand wash", "lavar a mano", "lavado a mano")
 	dryCleanOnly := containsAny(normalized, "dry clean only", "professional dry clean only", "limpieza en seco solamente", "solo limpieza en seco")
-	doNotDryClean := containsAny(normalized, "do not dry clean", "dont dry clean", "no lavar en seco", "no limpieza en seco")
+	doNotDryClean := containsAny(normalized, "do not dry clean", "dont dry clean", "no lavar en seco", "no limpieza en seco") || containsAny(compact, "donotdryclean", "dontdryclean", "nolavarseco")
 
 	machineWashSignal := containsAny(normalized, "machine wash", "machine washable", "wash cold", "cold wash", "wash warm", "wash hot", "lavar a maquina", "lavado a maquina")
 	machineWashable := !negativeWash && !dryCleanOnly && !handWashOnly && (machineWashSignal || washTemp != nil)
 
-	negativeTumble := containsAny(normalized, "do not tumble dry", "dont tumble dry", "no tumble dry", "avoid tumble dry", "avoid tumble drying", "no usar secadora")
+	negativeTumble := containsAny(normalized, "do not tumble dry", "dont tumble dry", "no tumble dry", "avoid tumble dry", "avoid tumble drying", "dry flat", "line dry", "lay flat", "no usar secadora") ||
+		containsAny(compact, "donottumbledry", "donttumbledry", "notumbledry", "dryflat", "linedry", "layflat")
 	positiveTumble := containsAny(normalized, "tumble dry", "secadora")
 	tumbleDry := positiveTumble && !negativeTumble
 
-	negativeBleach := containsAny(normalized, "do not bleach", "dont bleach", "no bleach", "no usar lejia", "no usar blanqueador", "no blanquear")
+	negativeBleach := containsAny(normalized, "do not bleach", "dont bleach", "no bleach", "no usar lejia", "no usar blanqueador", "no blanquear") ||
+		containsBleachProhibition(normalized, compact)
 	positiveBleach := containsAny(normalized, "bleach allowed", "bleach when needed", "non chlorine bleach", "non-chlorine bleach", "only non chlorine bleach", "blanqueador sin cloro")
 	bleachAllowed := positiveBleach && !negativeBleach
 
-	negativeIron := containsAny(normalized, "do not iron", "dont iron", "no iron", "no planchar")
-	positiveIron := containsAny(normalized, "iron", "cool iron", "warm iron", "hot iron", "planchar")
+	negativeIron := containsAny(normalized, "do not iron", "dont iron", "no iron", "no planchar") || containsAny(compact, "donotiron", "dontiron", "noiron", "noplanchar")
+	positiveIron := containsIronSignal(normalized, compact)
 	ironAllowed := positiveIron && !negativeIron
-	ironTemp := inferIronTemperature(normalized)
+	ironTemp := inferIronTemperature(normalized, compact)
 	if !ironAllowed {
 		ironTemp = nil
 	}
@@ -86,6 +89,19 @@ func containsAny(value string, needles ...string) bool {
 	return false
 }
 
+func compactForRules(value string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		default:
+			return -1
+		}
+	}, value)
+}
+
 var washTempWithUnitPattern = regexp.MustCompile(`\b([1-9][0-9])\s*(?:c|ºc|celsius)\b`)
 var washTempNearCarePattern = regexp.MustCompile(`\b(?:wash|lavar|lavado)\b.{0,16}\b(20|30|40|50|60|70|80|90|95)\b|\b(20|30|40|50|60|70|80|90|95)\b.{0,16}\b(?:wash|lavar|lavado)\b`)
 
@@ -110,6 +126,9 @@ func inferWashTemperature(normalized string) *int {
 	case containsAny(normalized, "machine wash cold", "wash cold", "cold wash", "lavar en frio", "agua fria"):
 		value := 30
 		return &value
+	case machineWashColdLooksGarbled(normalized):
+		value := 30
+		return &value
 	case containsAny(normalized, "machine wash warm", "wash warm", "warm wash", "lavar tibio"):
 		value := 40
 		return &value
@@ -119,6 +138,20 @@ func inferWashTemperature(normalized string) *int {
 	default:
 		return nil
 	}
+}
+
+func machineWashColdLooksGarbled(normalized string) bool {
+	if !strings.Contains(normalized, "machine wash") {
+		return false
+	}
+
+	index := strings.Index(normalized, "machine wash")
+	after := normalized[index:]
+	if len(after) > 32 {
+		after = after[:32]
+	}
+
+	return containsAny(after, "coid", "c0ld", "co ld", "oo es", "o o es")
 }
 
 func parseWashTemp(value string) (int, bool) {
@@ -132,15 +165,38 @@ func parseWashTemp(value string) (int, bool) {
 	return temperature, true
 }
 
-func inferIronTemperature(normalized string) *string {
+func containsBleachProhibition(normalized string, compact string) bool {
+	if containsAny(compact, "donotbleach", "dontbleach", "nobleach", "nousarlejia", "nousarblanqueador", "noblanquear") {
+		return true
+	}
+
+	return regexp.MustCompile(`do\s*not\s*blea(?:ch|c|o|q)?`).MatchString(normalized) ||
+		regexp.MustCompile(`dono?t?blea(?:ch|c|o|q)?`).MatchString(compact)
+}
+
+func containsIronSignal(normalized string, compact string) bool {
+	if containsAny(normalized, "iron", "cool iron", "warm iron", "hot iron", "planchar") {
+		return true
+	}
+	if containsAny(compact, "iron", "planchar") {
+		return true
+	}
+
+	return regexp.MustCompile(`\b(?:a\s+)?(?:i\s*)?r[0o]n\s+l[0o][nw]\s+heat\b`).MatchString(normalized)
+}
+
+func inferIronTemperature(normalized string, compact string) *string {
 	switch {
-	case containsAny(normalized, "cool iron", "low iron", "iron low", "planchar a baja", "baja temperatura"):
+	case containsAny(normalized, "cool iron", "low iron", "iron low", "low heat", "planchar a baja", "baja temperatura") ||
+		containsAny(compact, "cooliron", "lowiron", "ironlow", "lowheat", "lonheat", "l0wheat"):
 		value := "low"
 		return &value
-	case containsAny(normalized, "warm iron", "medium iron", "iron medium", "planchar a media", "temperatura media"):
+	case containsAny(normalized, "warm iron", "medium iron", "iron medium", "medium heat", "planchar a media", "temperatura media") ||
+		containsAny(compact, "warmiron", "mediumiron", "ironmedium", "mediumheat"):
 		value := "medium"
 		return &value
-	case containsAny(normalized, "hot iron", "high iron", "iron high", "planchar a alta", "alta temperatura"):
+	case containsAny(normalized, "hot iron", "high iron", "iron high", "high heat", "planchar a alta", "alta temperatura") ||
+		containsAny(compact, "hotiron", "highiron", "ironhigh", "highheat"):
 		value := "high"
 		return &value
 	default:

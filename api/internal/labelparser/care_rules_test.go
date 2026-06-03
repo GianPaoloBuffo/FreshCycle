@@ -86,3 +86,37 @@ func TestParseCareLabelTextDetectsConflictingRules(t *testing.T) {
 		t.Fatal("expected conflicting bleach rules")
 	}
 }
+
+func TestParseCareLabelTextHandlesGarbledOCRFromPhotoLabel(t *testing.T) {
+	result, evidence := parseCareLabelText("MACHINE WASH oo ES DONOTBLEAO! q will A RON LON HEAT pay CLEANANY ® BOLVENT ECT TRICHLORO! qee a 0 pAYELAT")
+
+	if !evidence.HasCareSignal {
+		t.Fatal("expected garbled OCR to still contain care signals")
+	}
+	if result.WashTempMax == nil || *result.WashTempMax != 30 {
+		t.Fatalf("expected garbled machine wash cold text to infer 30C, got %#v", result.WashTempMax)
+	}
+	if !result.MachineWashable {
+		t.Fatal("expected machine washable")
+	}
+	if result.BleachAllowed {
+		t.Fatal("expected garbled do-not-bleach text to disallow bleach")
+	}
+	if !result.IronAllowed || result.IronTemp == nil || *result.IronTemp != "low" {
+		t.Fatalf("expected garbled iron-low text to infer low iron, got allowed=%v temp=%#v", result.IronAllowed, result.IronTemp)
+	}
+	if result.TumbleDry {
+		t.Fatal("expected tumble dry to remain disallowed")
+	}
+}
+
+func TestParseCareLabelTextDoesNotTreatTumbleDryLowHeatAsIron(t *testing.T) {
+	result, _ := parseCareLabelText("Tumble dry low heat. Do not bleach.")
+
+	if !result.TumbleDry {
+		t.Fatal("expected tumble dry to be allowed")
+	}
+	if result.IronAllowed || result.IronTemp != nil {
+		t.Fatalf("did not expect tumble-dry low heat to imply iron, got allowed=%v temp=%#v", result.IronAllowed, result.IronTemp)
+	}
+}
