@@ -7,8 +7,13 @@ import (
 )
 
 type careRuleEvidence struct {
-	HasCareSignal bool
-	Conflicting   bool
+	HasCareSignal   bool
+	HasWashSignal   bool
+	HasDrySignal    bool
+	HasBleachSignal bool
+	HasIronSignal   bool
+	HasCleanSignal  bool
+	Conflicting     bool
 }
 
 func parseCareLabelText(text string) (ParseLabelResult, careRuleEvidence) {
@@ -44,18 +49,19 @@ func parseCareLabelText(text string) (ParseLabelResult, careRuleEvidence) {
 	}
 
 	fabricNotes := extractFabricNotes(normalized)
-	hasCareSignal := machineWashSignal ||
+	hasWashSignal := machineWashSignal || washTemp != nil || negativeWash || handWashOnly
+	hasDrySignal := positiveTumble || negativeTumble
+	hasBleachSignal := positiveBleach || negativeBleach
+	hasIronSignal := positiveIron || negativeIron
+	hasCleanSignal := dryCleanOnly || doNotDryClean
+	hasCareSignal := hasWashSignal ||
+		hasDrySignal ||
+		hasBleachSignal ||
+		hasIronSignal ||
+		hasCleanSignal ||
 		washTemp != nil ||
 		negativeWash ||
-		handWashOnly ||
-		dryCleanOnly ||
-		doNotDryClean ||
-		positiveTumble ||
-		negativeTumble ||
-		positiveBleach ||
-		negativeBleach ||
-		positiveIron ||
-		negativeIron
+		handWashOnly
 
 	result := ParseLabelResult{
 		NameSuggestion:  "Care Label",
@@ -71,7 +77,12 @@ func parseCareLabelText(text string) (ParseLabelResult, careRuleEvidence) {
 	}
 
 	return result, careRuleEvidence{
-		HasCareSignal: hasCareSignal,
+		HasCareSignal:   hasCareSignal,
+		HasWashSignal:   hasWashSignal,
+		HasDrySignal:    hasDrySignal,
+		HasBleachSignal: hasBleachSignal,
+		HasIronSignal:   hasIronSignal,
+		HasCleanSignal:  hasCleanSignal,
 		Conflicting: (positiveTumble && negativeTumble) ||
 			(positiveBleach && negativeBleach) ||
 			(positiveIron && negativeIron) ||

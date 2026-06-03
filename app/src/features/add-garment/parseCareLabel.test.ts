@@ -118,6 +118,56 @@ describe('parseCareLabelPhoto', () => {
     expect(result.preview.notes[0]).toContain('80% cotton');
   });
 
+  it('does not turn missing OCR evidence into prohibition instructions', async () => {
+    const now = vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(260).mockReturnValueOnce(260);
+    const fetchImpl = vi.fn();
+
+    fetchImpl
+      .mockResolvedValueOnce({
+        blob: () => Promise.resolve(new Blob(['image bytes'], { type: 'image/png' })),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            name_suggestion: 'Care Label',
+            fabric_notes: [],
+            wash_temp_max: null,
+            machine_washable: true,
+            tumble_dry: false,
+            dry_clean_only: false,
+            iron_allowed: false,
+            iron_temp: null,
+            bleach_allowed: false,
+            raw_label_text: 'MACHINE WASH eon',
+          }),
+      });
+
+    const result = await parseCareLabelPhoto(
+      {
+        uri: 'https://example.com/label.png',
+        fileName: 'label.png',
+        mimeType: 'image/png',
+        width: 1200,
+        height: 1600,
+        fileSize: 8192,
+        source: 'library',
+      },
+      {
+        apiBaseUrl: 'https://api.example.com',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        now,
+        platform: 'web',
+        accessToken: 'token-123',
+      }
+    );
+
+    expect(result.preview.careSummary).toContain('Ironing needs review');
+    expect(result.preview.careSummary).not.toContain('Do not iron');
+    expect(result.parsed.careInstructions).not.toContain('Do not iron');
+    expect(result.preview.notes.join(' ')).not.toContain('no bleach');
+  });
+
   it('requires an access token before calling the API parser', async () => {
     await expect(
       parseCareLabelPhoto(

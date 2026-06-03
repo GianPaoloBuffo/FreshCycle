@@ -101,6 +101,23 @@ func TestOCRParseDetailsFallbackReasons(t *testing.T) {
 	}
 }
 
+func TestOCRParseDetailsFlagsPartialCareLabel(t *testing.T) {
+	result, evidence := parseCareLabelText("MACHINE WASH eon")
+	details := OCRParseDetails{
+		Result:            result,
+		Text:              "MACHINE WASH eon",
+		AverageConfidence: 82,
+		WordCount:         3,
+		KeywordHits:       2,
+		Evidence:          evidence,
+	}
+
+	reasons := details.evaluateFallbackReasons()
+	if len(reasons) != 1 || reasons[0] != "partial_care_label" {
+		t.Fatalf("expected partial_care_label fallback reason, got %#v", reasons)
+	}
+}
+
 func TestTesseractRunnerIntegrationSkipsWhenUnavailable(t *testing.T) {
 	if _, err := exec.LookPath("tesseract"); err != nil {
 		t.Skip("tesseract is not installed")

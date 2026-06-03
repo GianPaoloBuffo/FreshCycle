@@ -236,8 +236,30 @@ func (d OCRParseDetails) evaluateFallbackReasons() []string {
 	}
 	if !d.Evidence.HasCareSignal {
 		reasons = append(reasons, "no_care_signal")
+	} else if d.Evidence.SignalCount() < 2 {
+		reasons = append(reasons, "partial_care_label")
 	}
 	return reasons
+}
+
+func (e careRuleEvidence) SignalCount() int {
+	count := 0
+	if e.HasWashSignal {
+		count++
+	}
+	if e.HasDrySignal {
+		count++
+	}
+	if e.HasBleachSignal {
+		count++
+	}
+	if e.HasIronSignal {
+		count++
+	}
+	if e.HasCleanSignal {
+		count++
+	}
+	return count
 }
 
 func chooseOCRRun(first ocrRun, second ocrRun) ocrRun {

@@ -287,7 +287,7 @@ async function buildMultipartBody(
 }
 
 function buildCareSummary(result: ParseLabelApiResponse) {
-  const instructions = [
+ const instructions = [
     result.machine_washable
       ? result.wash_temp_max
         ? `Machine wash up to ${result.wash_temp_max}C`
@@ -295,13 +295,15 @@ function buildCareSummary(result: ParseLabelApiResponse) {
       : result.dry_clean_only
         ? 'Dry clean only'
         : 'Wash method needs review',
-    result.tumble_dry ? 'Tumble dry allowed' : 'Avoid tumble drying',
+    result.tumble_dry ? 'Tumble dry allowed' : hasTumbleDryProhibition(result) ? 'Avoid tumble drying' : 'Drying needs review',
     result.iron_allowed
       ? result.iron_temp
         ? `Iron on ${result.iron_temp} heat`
         : 'Iron allowed'
-      : 'Do not iron',
-    result.bleach_allowed ? 'Bleach allowed' : 'Do not bleach',
+      : hasIronProhibition(result)
+        ? 'Do not iron'
+        : 'Ironing needs review',
+    result.bleach_allowed ? 'Bleach allowed' : hasBleachProhibition(result) ? 'Do not bleach' : 'Bleach needs review',
   ];
 
   return instructions.join('. ');
@@ -322,7 +324,7 @@ function buildInstructionSummary(result: ParseLabelApiResponse) {
   if (result.iron_allowed) {
     instructions.push(result.iron_temp ? `iron ${result.iron_temp}` : 'iron allowed');
   }
-  if (!result.bleach_allowed) {
+  if (!result.bleach_allowed && hasBleachProhibition(result)) {
     instructions.push('no bleach');
   }
 
@@ -340,21 +342,84 @@ function buildCareInstructions(result: ParseLabelApiResponse) {
   }
   if (result.tumble_dry) {
     instructions.push('Tumble dry allowed');
-  } else {
+  } else if (hasTumbleDryProhibition(result)) {
     instructions.push('Avoid tumble drying');
   }
   if (result.iron_allowed) {
     instructions.push(result.iron_temp ? `Iron on ${result.iron_temp} heat` : 'Iron allowed');
-  } else {
+  } else if (hasIronProhibition(result)) {
     instructions.push('Do not iron');
   }
   if (result.bleach_allowed) {
     instructions.push('Bleach allowed');
-  } else {
+  } else if (hasBleachProhibition(result)) {
     instructions.push('Do not bleach');
   }
 
   return instructions;
+}
+
+function normalizedRawLabelText(result: ParseLabelApiResponse) {
+  return result.raw_label_text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactRawLabelText(result: ParseLabelApiResponse) {
+  return normalizedRawLabelText(result).replace(/[^a-z0-9]/g, '');
+}
+
+function hasBleachProhibition(result: ParseLabelApiResponse) {
+  const normalized = normalizedRawLabelText(result);
+  const compact = compactRawLabelText(result);
+
+  return (
+    normalized.includes('do not bleach') ||
+    normalized.includes('dont bleach') ||
+    normalized.includes('no bleach') ||
+    normalized.includes('no usar lejia') ||
+    compact.includes('donotbleach') ||
+    compact.includes('dontbleach') ||
+    compact.includes('nobleach') ||
+    /dono?t?blea(ch|c|o|q)?/.test(compact)
+  );
+}
+
+function hasIronProhibition(result: ParseLabelApiResponse) {
+  const normalized = normalizedRawLabelText(result);
+  const compact = compactRawLabelText(result);
+
+  return (
+    normalized.includes('do not iron') ||
+    normalized.includes('dont iron') ||
+    normalized.includes('no iron') ||
+    normalized.includes('no planchar') ||
+    compact.includes('donotiron') ||
+    compact.includes('dontiron') ||
+    compact.includes('noiron')
+  );
+}
+
+function hasTumbleDryProhibition(result: ParseLabelApiResponse) {
+  const normalized = normalizedRawLabelText(result);
+  const compact = compactRawLabelText(result);
+
+  return (
+    normalized.includes('do not tumble dry') ||
+    normalized.includes('dont tumble dry') ||
+    normalized.includes('no tumble dry') ||
+    normalized.includes('avoid tumble dry') ||
+    normalized.includes('dry flat') ||
+    normalized.includes('lay flat') ||
+    compact.includes('donottumbledry') ||
+    compact.includes('donttumbledry') ||
+    compact.includes('notumbledry') ||
+    compact.includes('dryflat') ||
+    compact.includes('layflat')
+  );
 }
 
 function inferCategoryFromName(name: string) {
