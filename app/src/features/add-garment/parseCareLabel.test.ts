@@ -168,6 +168,54 @@ describe('parseCareLabelPhoto', () => {
     expect(result.preview.notes.join(' ')).not.toContain('no bleach');
   });
 
+  it('treats line dry text as a tumble-dry prohibition', async () => {
+    const now = vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(260).mockReturnValueOnce(260);
+    const fetchImpl = vi.fn();
+
+    fetchImpl
+      .mockResolvedValueOnce({
+        blob: () => Promise.resolve(new Blob(['image bytes'], { type: 'image/png' })),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            name_suggestion: 'Care Label',
+            fabric_notes: [],
+            wash_temp_max: 30,
+            machine_washable: true,
+            tumble_dry: false,
+            dry_clean_only: false,
+            iron_allowed: true,
+            iron_temp: 'low',
+            bleach_allowed: false,
+            raw_label_text: 'Machine wash cold. Line dry. Cool iron if needed.',
+          }),
+      });
+
+    const result = await parseCareLabelPhoto(
+      {
+        uri: 'https://example.com/label.png',
+        fileName: 'label.png',
+        mimeType: 'image/png',
+        width: 1200,
+        height: 1600,
+        fileSize: 8192,
+        source: 'library',
+      },
+      {
+        apiBaseUrl: 'https://api.example.com',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        now,
+        platform: 'web',
+        accessToken: 'token-123',
+      }
+    );
+
+    expect(result.preview.careSummary).toContain('Avoid tumble drying');
+    expect(result.parsed.careInstructions).toContain('Avoid tumble drying');
+  });
+
   it('requires an access token before calling the API parser', async () => {
     await expect(
       parseCareLabelPhoto(

@@ -413,11 +413,13 @@ function hasTumbleDryProhibition(result: ParseLabelApiResponse) {
     normalized.includes('no tumble dry') ||
     normalized.includes('avoid tumble dry') ||
     normalized.includes('dry flat') ||
+    normalized.includes('line dry') ||
     normalized.includes('lay flat') ||
     compact.includes('donottumbledry') ||
     compact.includes('donttumbledry') ||
     compact.includes('notumbledry') ||
     compact.includes('dryflat') ||
+    compact.includes('linedry') ||
     compact.includes('layflat')
   );
 }
