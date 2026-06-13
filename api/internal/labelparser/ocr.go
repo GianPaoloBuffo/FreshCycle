@@ -132,6 +132,23 @@ func (p OCRParser) ParseLabel(ctx context.Context, input ParseLabelInput) (Parse
 	return details.Result, nil
 }
 
+func (p OCRParser) ScanLabel(ctx context.Context, input ScanLabelInput) (ScanLabelResult, error) {
+	if result, ok := scanFromClientEvidence(input); ok {
+		return result, nil
+	}
+
+	details, err := p.ParseLabelWithDetails(ctx, input.ParseLabelInput)
+	if err != nil {
+		return ScanLabelResult{}, err
+	}
+	if details.ShouldFallback() && !details.HasUsablePartial() {
+		return ScanLabelResult{}, fmt.Errorf("%w: OCR did not produce usable label text", ErrUpstreamParseRejected)
+	}
+
+	log.Printf("ocr scan-label parser completed: confidence=%.1f word_count=%d keyword_hits=%d fallback_reasons=%s", details.AverageConfidence, details.WordCount, details.KeywordHits, strings.Join(details.FallbackReasons, ","))
+	return scanFromOCRDetails(details), nil
+}
+
 func (p OCRParser) ParseLabelWithDetails(ctx context.Context, input ParseLabelInput) (OCRParseDetails, error) {
 	if p.runner == nil {
 		return OCRParseDetails{}, ErrProviderUnavailable

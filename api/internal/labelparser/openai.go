@@ -117,6 +117,81 @@ func (p OpenAIParser) ParseLabel(ctx context.Context, input ParseLabelInput) (Pa
 	return result, nil
 }
 
+func (p OpenAIParser) ScanLabel(ctx context.Context, input ScanLabelInput) (ScanLabelResult, error) {
+	if strings.TrimSpace(p.apiKey) == "" || strings.TrimSpace(p.model) == "" {
+		return ScanLabelResult{}, ErrProviderUnavailable
+	}
+
+	requestBody := openAIResponsesRequest{
+		Model: p.model,
+		Input: []openAIInputItem{
+			{
+				Role: "user",
+				Content: []openAIContentItem{
+					{
+						Type: "input_text",
+						Text: buildScanPrompt(input),
+					},
+					{
+						Type:     "input_image",
+						ImageURL: fmt.Sprintf("data:%s;base64,%s", input.MIMEType, base64.StdEncoding.EncodeToString(input.Content)),
+					},
+				},
+			},
+		},
+		Text: openAITextConfig{
+			Format: openAITextFormat{
+				Type:   "json_schema",
+				Name:   "care_label_scan",
+				Strict: true,
+				Schema: scanLabelResponseSchema,
+			},
+		},
+	}
+
+	payload, err := json.Marshal(requestBody)
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("marshal OpenAI scan-label request: %w", err)
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL, bytes.NewReader(payload))
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("build OpenAI scan-label request: %w", err)
+	}
+
+	request.Header.Set("Authorization", "Bearer "+p.apiKey)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := p.httpClient.Do(request)
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("call OpenAI responses API for scan-label: %w", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("read OpenAI scan-label response: %w", err)
+	}
+
+	if response.StatusCode >= http.StatusBadRequest {
+		log.Printf("openai scan-label parser rejected request: status=%s body=%q", response.Status, truncateForLog(string(body), 1000))
+		return ScanLabelResult{}, fmt.Errorf("%w: OpenAI returned %s", ErrUpstreamParseRejected, response.Status)
+	}
+
+	var parsed openAIResponsesResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ScanLabelResult{}, fmt.Errorf("decode OpenAI scan-label response: %w", err)
+	}
+
+	outputText := strings.TrimSpace(parsed.outputText())
+	if outputText == "" {
+		log.Printf("openai scan-label parser response missing output text: body=%q", truncateForLog(string(body), 1000))
+		return ScanLabelResult{}, fmt.Errorf("%w: missing output_text", ErrUpstreamParseRejected)
+	}
+
+	return decodeScanLabelProviderOutput(outputText)
+}
+
 func buildOpenAIPrompt(input ParseLabelInput) string {
 	return fmt.Sprintf(
 		"Extract garment care-label details from this image. Return only the structured fields requested by the schema. Be conservative: if the wash temperature or iron temperature is not visible, set it to null. Use false for boolean care instructions unless the symbol or text clearly indicates the instruction applies. Include any readable text from the label in raw_label_text. Filename: %s. MIME type: %s.",

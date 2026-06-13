@@ -57,3 +57,64 @@ func (p HybridParser) ParseLabel(ctx context.Context, input ParseLabelInput) (Pa
 
 	return ParseLabelResult{}, fmt.Errorf("%w: fallback failed without usable OCR", ErrUpstreamParseRejected)
 }
+
+func (p HybridParser) ScanLabel(ctx context.Context, input ScanLabelInput) (ScanLabelResult, error) {
+	if p.primary == nil || p.fallback == nil {
+		return ScanLabelResult{}, ErrProviderUnavailable
+	}
+
+	if result, ok := scanFromClientEvidence(input); ok && result.Confidence >= 0.75 {
+		log.Printf("hybrid scan-label parser used client evidence: confidence=%.2f", result.Confidence)
+		return result, nil
+	}
+
+	ocrDetails, ocrErr := p.primary.ParseLabelWithDetails(ctx, input.ParseLabelInput)
+	if ocrErr == nil && !ocrDetails.ShouldFallback() {
+		log.Printf("hybrid scan-label parser used ocr: confidence=%.1f word_count=%d keyword_hits=%d", ocrDetails.AverageConfidence, ocrDetails.WordCount, ocrDetails.KeywordHits)
+		return scanFromOCRDetails(ocrDetails), nil
+	}
+
+	fallbackReason := "ocr_error"
+	if ocrErr == nil {
+		fallbackReason = strings.Join(ocrDetails.FallbackReasons, ",")
+	}
+	log.Printf("hybrid scan-label parser invoking fallback: reason=%s ocr_confidence=%.1f ocr_word_count=%d", fallbackReason, ocrDetails.AverageConfidence, ocrDetails.WordCount)
+
+	fallbackResult, fallbackErr := scanWithFallbackParser(ctx, p.fallback, input)
+	if fallbackErr == nil {
+		fallbackResult.Explanation = strings.TrimSpace(fallbackResult.Explanation)
+		if fallbackResult.Explanation == "" {
+			fallbackResult.Explanation = "FreshCycle used multimodal fallback after OCR needed review."
+		}
+		log.Printf("hybrid scan-label parser used fallback: reason=%s", fallbackReason)
+		return normalizeScanLabelResult(fallbackResult), nil
+	}
+
+	if ocrErr == nil && ocrDetails.HasUsablePartial() {
+		log.Printf("hybrid scan-label parser returning partial ocr after fallback failure: reason=%s fallback_error=%T", fallbackReason, fallbackErr)
+		return scanFromOCRDetails(ocrDetails), nil
+	}
+
+	if clientResult, ok := scanFromClientEvidence(input); ok {
+		log.Printf("hybrid scan-label parser returning client evidence after fallback failure: reason=%s fallback_error=%T", fallbackReason, fallbackErr)
+		return clientResult, nil
+	}
+
+	if ocrErr != nil {
+		return ScanLabelResult{}, fmt.Errorf("%w: OCR failed and fallback failed", ErrUpstreamParseRejected)
+	}
+
+	return ScanLabelResult{}, fmt.Errorf("%w: fallback failed without usable OCR", ErrUpstreamParseRejected)
+}
+
+func scanWithFallbackParser(ctx context.Context, parser Parser, input ScanLabelInput) (ScanLabelResult, error) {
+	if scanner, ok := parser.(Scanner); ok {
+		return scanner.ScanLabel(ctx, input)
+	}
+
+	result, err := parser.ParseLabel(ctx, input.ParseLabelInput)
+	if err != nil {
+		return ScanLabelResult{}, err
+	}
+	return scanFromParseLabelResult(result, careRuleEvidence{}, "fallback parser", 0.62), nil
+}

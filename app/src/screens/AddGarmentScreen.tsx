@@ -25,10 +25,12 @@ import {
 import { saveGarment, SavedGarment } from '@/features/add-garment/saveGarment';
 import { createSignedLabelImageUrl, uploadLabelImage } from '@/features/add-garment/uploadLabelImage';
 import { logAddGarmentError, logAddGarmentEvent } from '@/features/add-garment/observability';
-import { ParsedLabelResult, SelectedLabelPhoto } from '@/features/add-garment/types';
+import { CareLabelReviewField, ParsedLabelResult, SelectedLabelPhoto } from '@/features/add-garment/types';
 import { AppScreen } from '@/components/AppScreen';
+import { CareLabelScanner } from '@/components/CareLabelScanner';
 import { palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { ScanLabelClientResult } from '@/features/scan-label/types';
 
 type FlowStatus = 'idle' | 'selecting' | 'processing' | 'uploading' | 'saving' | 'ready' | 'saved';
 type GarmentReviewFormValues = {
@@ -62,6 +64,8 @@ export function AddGarmentScreen() {
   const { width } = useWindowDimensions();
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedLabelPhoto | null>(null);
   const [parseResult, setParseResult] = useState<ParsedLabelResult | null>(null);
+  const [scanResult, setScanResult] = useState<ScanLabelClientResult | null>(null);
+  const [scannerVisible, setScannerVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reviewErrorMessage, setReviewErrorMessage] = useState<string | null>(null);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
@@ -117,6 +121,7 @@ export function AddGarmentScreen() {
   useEffect(() => {
     if (!parseResult) {
       reset(createInitialReviewDefaults());
+      setScanResult(null);
       setPreparedPayload(null);
       setReviewErrorMessage(null);
       setReviewMessage(null);
@@ -142,6 +147,8 @@ export function AddGarmentScreen() {
   function resetFlow() {
     setSelectedPhoto(null);
     setParseResult(null);
+    setScanResult(null);
+    setScannerVisible(false);
     setErrorMessage(null);
     setReviewErrorMessage(null);
     setReviewMessage(null);
@@ -154,6 +161,8 @@ export function AddGarmentScreen() {
   async function handleSourceSelection(source: SelectedLabelPhoto['source']) {
     setErrorMessage(null);
     setReviewErrorMessage(null);
+    setScannerVisible(false);
+    setScanResult(null);
     setStatus('selecting');
     setParseResult(null);
 
@@ -202,6 +211,41 @@ export function AddGarmentScreen() {
         platform: Platform.OS,
       });
     }
+  }
+
+  function handleScannerComplete(result: ScanLabelClientResult) {
+    setSelectedPhoto(result.photo);
+    setParseResult(result.parsedLabel);
+    setScanResult(result);
+    setScannerVisible(false);
+    setErrorMessage(null);
+    setReviewErrorMessage(null);
+    setReviewMessage(null);
+    setPreparedPayload(null);
+    setSavedGarment(null);
+    setSavedLabelImageUrl(null);
+    setStatus('ready');
+    logAddGarmentEvent('label_selection_completed', {
+      source: result.photo.source,
+      durationMs: result.parsedLabel.durationMs,
+      parserMode: 'scan-label',
+    });
+  }
+
+  function handleScannerError(error: unknown) {
+    const message =
+      error instanceof AddGarmentActionError
+        ? error.message
+        : describeAddGarmentError('processing-failed');
+
+    setErrorMessage(message);
+    setReviewErrorMessage(null);
+    setStatus(selectedPhoto ? 'ready' : 'idle');
+    logAddGarmentError('label_selection_failed', error, {
+      source: 'camera',
+      platform: Platform.OS,
+      parserMode: 'scan-label',
+    });
   }
 
   const submitReview = handleSubmit(async (values) => {
@@ -276,7 +320,7 @@ export function AddGarmentScreen() {
     <AppScreen padded={false}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>Phase 2 label scanning</Text>
+          <Text style={styles.eyebrow}>Phase 1 label scanning</Text>
           <Text style={styles.title}>Capture the care label before we parse the garment details.</Text>
           <Text style={styles.body}>
             Start with a fresh camera shot when possible, or fall back to the photo library if the label
@@ -330,17 +374,18 @@ export function AddGarmentScreen() {
 
           <View style={[styles.buttonRow, stackButtons && styles.buttonRowStacked]}>
             <Pressable
-              accessibilityLabel="Take a photo with the camera"
+              accessibilityLabel="Open assisted label scanner"
               disabled={!session || isBusy || !canUseCamera}
-              onPress={() => void handleSourceSelection('camera')}
+              onPress={() => {
+                setErrorMessage(null);
+                setScannerVisible((value) => !value);
+              }}
               style={[
                 styles.primaryButton,
                 stackButtons && styles.fullWidthButton,
                 (!session || isBusy || !canUseCamera) && styles.buttonDisabled,
               ]}>
-              <Text style={styles.primaryButtonText}>
-                {Platform.OS === 'web' ? 'Use camera or camera upload' : 'Use camera'}
-              </Text>
+              <Text style={styles.primaryButtonText}>{scannerVisible ? 'Hide scanner' : 'Use assisted scanner'}</Text>
             </Pressable>
 
             <Pressable
@@ -358,10 +403,20 @@ export function AddGarmentScreen() {
 
           <Text style={styles.helperText}>
             {Platform.OS === 'web'
-              ? 'On the web, supported browsers can open the device camera from the picker. If not, the same action falls back to the browser file chooser.'
+              ? 'On the web, the scanner uses the browser picker after the camera action.'
               : 'If camera access is denied, the library path stays available so the flow never dead-ends.'}
           </Text>
         </View>
+
+        {scannerVisible && session && (
+          <CareLabelScanner
+            accessToken={session.access_token}
+            disabled={isBusy}
+            onCancel={() => setScannerVisible(false)}
+            onComplete={handleScannerComplete}
+            onError={handleScannerError}
+          />
+        )}
 
         {errorMessage && (
           <View style={styles.errorCard}>
@@ -434,8 +489,29 @@ export function AddGarmentScreen() {
               <Text style={styles.resultName}>{parseResult.preview.garmentName}</Text>
               <Text style={styles.resultMeta}>
                 {parseResult.preview.suggestedCategory} · {parseResult.preview.confidenceLabel}
+                {typeof parseResult.preview.confidenceScore === 'number'
+                  ? ` · ${Math.round(parseResult.preview.confidenceScore * 100)}%`
+                  : ''}
               </Text>
               <Text style={styles.resultBody}>{parseResult.preview.careSummary}</Text>
+              {parseResult.preview.needsUserConfirmation && (
+                <View style={styles.confirmationNotice}>
+                  <Text style={styles.confirmationTitle}>Review needed before saving</Text>
+                  <Text style={styles.confirmationBody}>
+                    {parseResult.preview.explanation ??
+                      'FreshCycle marked one or more care fields as uncertain.'}
+                  </Text>
+                </View>
+              )}
+              {scanResult?.quality.hints.length ? (
+                <View style={styles.qualityList}>
+                  {scanResult.quality.hints.map((hint) => (
+                    <Text key={hint.issue} style={styles.qualityHint}>
+                      {hint.message}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
               {parseResult.preview.notes.map((note) => (
                 <Text key={note} style={styles.noteItem}>
                   {`\u2022 ${note}`}
@@ -448,7 +524,10 @@ export function AddGarmentScreen() {
                 <Pressable
                   accessibilityLabel="Capture a different label photo"
                   disabled={isBusy || !session}
-                  onPress={() => void handleSourceSelection('camera')}
+                  onPress={() => {
+                    setErrorMessage(null);
+                    setScannerVisible(true);
+                  }}
                   style={[
                     styles.primaryButton,
                     stackButtons && styles.fullWidthButton,
@@ -493,7 +572,11 @@ export function AddGarmentScreen() {
                           onChangeText={onChange}
                           placeholder="e.g. Navy Hoodie"
                           placeholderTextColor="#77887a"
-                          style={[styles.textInput, errors.name && styles.textInputError]}
+                          style={[
+                            styles.textInput,
+                            isReviewFieldUncertain(parseResult, 'name') && styles.textInputWarning,
+                            errors.name && styles.textInputError,
+                          ]}
                           value={value}
                         />
                       )}
@@ -563,7 +646,11 @@ export function AddGarmentScreen() {
                           onChangeText={onChange}
                           placeholder="Optional"
                           placeholderTextColor="#77887a"
-                          style={[styles.textInput, errors.washTemperatureC && styles.textInputError]}
+                          style={[
+                            styles.textInput,
+                            isReviewFieldUncertain(parseResult, 'wash') && styles.textInputWarning,
+                            errors.washTemperatureC && styles.textInputError,
+                          ]}
                           value={value}
                         />
                       )}
@@ -575,11 +662,36 @@ export function AddGarmentScreen() {
                 </View>
 
                 <View style={styles.toggleGrid}>
-                  <ControlledSwitch control={control} name="machineWashable" label="Machine washable" />
-                  <ControlledSwitch control={control} name="tumbleDry" label="Tumble dry allowed" />
-                  <ControlledSwitch control={control} name="dryCleanOnly" label="Dry clean only" />
-                  <ControlledSwitch control={control} name="ironAllowed" label="Iron allowed" />
-                  <ControlledSwitch control={control} name="bleachAllowed" label="Bleach allowed" />
+                  <ControlledSwitch
+                    control={control}
+                    highlight={isReviewFieldUncertain(parseResult, 'wash')}
+                    name="machineWashable"
+                    label="Machine washable"
+                  />
+                  <ControlledSwitch
+                    control={control}
+                    highlight={isReviewFieldUncertain(parseResult, 'drying')}
+                    name="tumbleDry"
+                    label="Tumble dry allowed"
+                  />
+                  <ControlledSwitch
+                    control={control}
+                    highlight={isReviewFieldUncertain(parseResult, 'professional_cleaning')}
+                    name="dryCleanOnly"
+                    label="Professional clean only"
+                  />
+                  <ControlledSwitch
+                    control={control}
+                    highlight={isReviewFieldUncertain(parseResult, 'ironing')}
+                    name="ironAllowed"
+                    label="Iron allowed"
+                  />
+                  <ControlledSwitch
+                    control={control}
+                    highlight={isReviewFieldUncertain(parseResult, 'bleach')}
+                    name="bleachAllowed"
+                    label="Bleach allowed"
+                  />
                 </View>
 
                 <View style={styles.fieldGroup}>
@@ -597,11 +709,12 @@ export function AddGarmentScreen() {
                             <Pressable
                               key={option || 'unset'}
                               onPress={() => onChange(option)}
-                              style={[
-                                styles.choiceChip,
-                                isSelected && styles.choiceChipSelected,
-                                stackButtons && styles.fullWidthButton,
-                              ]}>
+                          style={[
+                            styles.choiceChip,
+                            isReviewFieldUncertain(parseResult, 'ironing') && styles.choiceChipWarning,
+                            isSelected && styles.choiceChipSelected,
+                            stackButtons && styles.fullWidthButton,
+                          ]}>
                               <Text style={[styles.choiceChipText, isSelected && styles.choiceChipTextSelected]}>
                                 {label}
                               </Text>
@@ -665,7 +778,11 @@ export function AddGarmentScreen() {
                         onChangeText={onChange}
                         placeholder="One note per line"
                         placeholderTextColor="#77887a"
-                        style={[styles.textInput, styles.textArea]}
+                        style={[
+                          styles.textInput,
+                          styles.textArea,
+                          isReviewFieldUncertain(parseResult, 'fabric') && styles.textInputWarning,
+                        ]}
                         value={value}
                       />
                     )}
@@ -685,7 +802,11 @@ export function AddGarmentScreen() {
                         onChangeText={onChange}
                         placeholder="Detected OCR text"
                         placeholderTextColor="#77887a"
-                        style={[styles.textInput, styles.textArea]}
+                        style={[
+                          styles.textInput,
+                          styles.textArea,
+                          isReviewFieldUncertain(parseResult, 'raw_text') && styles.textInputWarning,
+                        ]}
                         value={value}
                       />
                     )}
@@ -926,12 +1047,39 @@ function formatPayload(payload: PreparedGarmentPayload) {
   return JSON.stringify(payload, null, 2);
 }
 
+function isReviewFieldUncertain(parseResult: ParsedLabelResult | null, field: CareLabelReviewField) {
+  if (!parseResult) {
+    return false;
+  }
+
+  if (parseResult.parsed.uncertainFields?.includes(field)) {
+    return true;
+  }
+
+  const confidence = parseResult.parsed.fieldConfidence?.[field];
+  if (typeof confidence === 'number' && confidence < 0.72) {
+    return true;
+  }
+
+  if (field === 'raw_text') {
+    return !parseResult.parsed.rawLabelText.trim();
+  }
+
+  if (field === 'fabric') {
+    return parseResult.parsed.fabricNotes.length === 0;
+  }
+
+  return false;
+}
+
 function ControlledSwitch({
   control,
+  highlight = false,
   label,
   name,
 }: {
   control: ReturnType<typeof useForm<GarmentReviewFormValues>>['control'];
+  highlight?: boolean;
   label: string;
   name:
     | 'machineWashable'
@@ -945,7 +1093,7 @@ function ControlledSwitch({
       control={control}
       name={name}
       render={({ field: { onChange, value } }) => (
-        <View style={styles.toggleRow}>
+        <View style={[styles.toggleRow, highlight && styles.toggleRowWarning]}>
           <Text style={styles.toggleLabel}>{label}</Text>
           <Switch
             onValueChange={onChange}
@@ -1250,6 +1398,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  confirmationNotice: {
+    backgroundColor: '#f8efce',
+    borderColor: '#d5b85b',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 6,
+    padding: 14,
+  },
+  confirmationTitle: {
+    color: '#6d5513',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  confirmationBody: {
+    color: '#705d25',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  qualityList: {
+    gap: 6,
+  },
+  qualityHint: {
+    color: '#705d25',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
   noteItem: {
     color: palette.ink,
     fontSize: 14,
@@ -1293,6 +1468,10 @@ const styles = StyleSheet.create({
   textInputError: {
     borderColor: '#b5523f',
   },
+  textInputWarning: {
+    borderColor: '#caa038',
+    borderWidth: 2,
+  },
   textArea: {
     minHeight: 96,
     textAlignVertical: 'top',
@@ -1308,11 +1487,17 @@ const styles = StyleSheet.create({
   toggleRow: {
     alignItems: 'center',
     backgroundColor: '#efe5d4',
+    borderColor: 'transparent',
     borderRadius: 16,
+    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  toggleRowWarning: {
+    borderColor: '#caa038',
+    borderWidth: 2,
   },
   toggleLabel: {
     color: palette.ink,
@@ -1324,9 +1509,15 @@ const styles = StyleSheet.create({
   choiceChip: {
     alignItems: 'center',
     backgroundColor: '#e9ddc8',
+    borderColor: 'transparent',
     borderRadius: 999,
+    borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  choiceChipWarning: {
+    borderColor: '#caa038',
+    borderWidth: 2,
   },
   choiceChipSelected: {
     backgroundColor: palette.ink,

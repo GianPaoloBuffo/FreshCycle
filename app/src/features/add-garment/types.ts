@@ -17,6 +17,10 @@ export type ParsedLabelPreview = {
   careSummary: string;
   confidenceLabel: 'Review needed' | 'Mostly confident';
   notes: string[];
+  confidenceScore?: number;
+  explanation?: string;
+  needsUserConfirmation?: boolean;
+  uncertainFields?: string[];
 };
 
 export type ParsedGarmentFields = {
@@ -33,7 +37,21 @@ export type ParsedGarmentFields = {
   bleachAllowed: boolean;
   fabricNotes: string[];
   rawLabelText: string;
+  confidenceScore?: number;
+  needsUserConfirmation?: boolean;
+  uncertainFields?: string[];
+  fieldConfidence?: Partial<Record<CareLabelReviewField, number>>;
 };
+
+export type CareLabelReviewField =
+  | 'wash'
+  | 'bleach'
+  | 'drying'
+  | 'ironing'
+  | 'professional_cleaning'
+  | 'fabric'
+  | 'raw_text'
+  | 'name';
 
 export type ParsedLabelResult = {
   parsed: ParsedGarmentFields;

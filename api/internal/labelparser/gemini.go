@@ -113,6 +113,77 @@ func (p GeminiParser) ParseLabel(ctx context.Context, input ParseLabelInput) (Pa
 	return result, nil
 }
 
+func (p GeminiParser) ScanLabel(ctx context.Context, input ScanLabelInput) (ScanLabelResult, error) {
+	if strings.TrimSpace(p.apiKey) == "" || strings.TrimSpace(p.model) == "" {
+		return ScanLabelResult{}, ErrProviderUnavailable
+	}
+
+	requestBody := geminiGenerateRequest{
+		Contents: []geminiContent{
+			{
+				Role: "user",
+				Parts: []geminiPart{
+					{
+						Text: buildScanPrompt(input),
+					},
+					{
+						InlineData: &geminiInlineData{
+							MIMEType: input.MIMEType,
+							Data:     base64.StdEncoding.EncodeToString(input.Content),
+						},
+					},
+				},
+			},
+		},
+		GenerationConfig: geminiGenerationConfig{
+			ResponseMIMEType: "application/json",
+			ResponseSchema:   scanLabelResponseSchema,
+		},
+	}
+
+	payload, err := json.Marshal(requestBody)
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("marshal Gemini scan-label request: %w", err)
+	}
+
+	requestURL := fmt.Sprintf("%s/models/%s:generateContent", p.baseURL, strings.TrimPrefix(p.model, "models/"))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(payload))
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("build Gemini scan-label request: %w", err)
+	}
+	request.Header.Set("x-goog-api-key", p.apiKey)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := p.httpClient.Do(request)
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("call Gemini generateContent API for scan-label: %w", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if err != nil {
+		return ScanLabelResult{}, fmt.Errorf("read Gemini scan-label response: %w", err)
+	}
+
+	if response.StatusCode >= http.StatusBadRequest {
+		log.Printf("gemini scan-label parser rejected request: status=%s body=%q", response.Status, truncateForLog(string(body), 1000))
+		return ScanLabelResult{}, fmt.Errorf("%w: Gemini returned %s", ErrUpstreamParseRejected, response.Status)
+	}
+
+	var parsed geminiGenerateResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ScanLabelResult{}, fmt.Errorf("decode Gemini scan-label response: %w", err)
+	}
+
+	outputText := strings.TrimSpace(parsed.outputText())
+	if outputText == "" {
+		log.Printf("gemini scan-label parser response missing output text: body=%q", truncateForLog(string(body), 1000))
+		return ScanLabelResult{}, fmt.Errorf("%w: missing Gemini output text", ErrUpstreamParseRejected)
+	}
+
+	return decodeScanLabelProviderOutput(outputText)
+}
+
 func buildGeminiPrompt(input ParseLabelInput) string {
 	return fmt.Sprintf(
 		"Extract garment care-label details from this image. Return only JSON matching the provided schema. Be conservative: if the wash temperature or iron temperature is not visible, set it to null. Use false for boolean care instructions unless the symbol or text clearly indicates the instruction applies. Include readable text from the label in raw_label_text. Filename: %s. MIME type: %s.",

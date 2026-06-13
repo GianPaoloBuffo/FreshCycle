@@ -34,6 +34,19 @@ func (StubParser) ParseLabel(_ context.Context, input ParseLabelInput) (ParseLab
 	}, nil
 }
 
+func (p StubParser) ScanLabel(ctx context.Context, input ScanLabelInput) (ScanLabelResult, error) {
+	if result, ok := scanFromClientEvidence(input); ok {
+		return result, nil
+	}
+
+	legacy, err := p.ParseLabel(ctx, input.ParseLabelInput)
+	if err != nil {
+		return ScanLabelResult{}, err
+	}
+
+	return scanFromParseLabelResult(legacy, careRuleEvidence{}, "stub parser", 0.52), nil
+}
+
 func intPtr(value int) *int {
 	return &value
 }

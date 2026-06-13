@@ -108,26 +108,7 @@ func TestHealthRoute(t *testing.T) {
 func TestParseLabelRoute(t *testing.T) {
 	t.Parallel()
 
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	header := textproto.MIMEHeader{}
-	header.Set("Content-Disposition", `form-data; name="image"; filename="linen-shirt.jpg"`)
-	header.Set("Content-Type", "image/png")
-	part, err := writer.CreatePart(header)
-	if err != nil {
-		t.Fatalf("create form file: %v", err)
-	}
-
-	if _, err := part.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}); err != nil {
-		t.Fatalf("write image body: %v", err)
-	}
-
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close multipart writer: %v", err)
-	}
-
-	request := httptest.NewRequest(http.MethodPost, "/garments/parse-label", body)
-	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request := newMultipartImageRequest(t, "/garments/parse-label", nil)
 	recorder := httptest.NewRecorder()
 
 	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
@@ -140,6 +121,119 @@ func TestParseLabelRoute(t *testing.T) {
 
 	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"name_suggestion":"Linen Shirt"`)) {
 		t.Fatalf("expected stub parse payload, got %s", recorder.Body.String())
+	}
+}
+
+func TestScanLabelRoute(t *testing.T) {
+	t.Parallel()
+
+	request := newMultipartImageRequest(t, "/scan-label", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response labelparser.ScanLabelResult
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode scan-label response: %v", err)
+	}
+
+	if response.Wash.Status != "machine_wash" {
+		t.Fatalf("expected machine wash status, got %#v", response.Wash)
+	}
+	if response.Bleach.Status != "do_not_bleach" {
+		t.Fatalf("expected do not bleach status, got %#v", response.Bleach)
+	}
+	if response.RawText == "" || response.Confidence <= 0 || response.Explanation == "" {
+		t.Fatalf("expected stable scan metadata, got %#v", response)
+	}
+	if response.UncertainFields == nil {
+		t.Fatal("expected uncertain_fields to be present")
+	}
+}
+
+func TestScanLabelRouteUsesClientOCR(t *testing.T) {
+	t.Parallel()
+
+	request := newMultipartImageRequest(t, "/scan-label", map[string]string{
+		"client_ocr": `{"text":"Dry clean only. Do not wash. Do not tumble dry. Do not bleach.","confidence":0.92}`,
+	})
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response labelparser.ScanLabelResult
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode scan-label response: %v", err)
+	}
+
+	if response.Wash.Status != "dry_clean_only" {
+		t.Fatalf("expected client OCR to drive wash status, got %#v", response.Wash)
+	}
+	if response.ProfessionalCleaning.Status != "dry_clean_only" {
+		t.Fatalf("expected dry clean only status, got %#v", response.ProfessionalCleaning)
+	}
+	if response.Confidence < 0.9 {
+		t.Fatalf("expected client OCR confidence to be preserved, got %f", response.Confidence)
+	}
+}
+
+func TestScanLabelRouteRejectsMissingAuth(t *testing.T) {
+	t.Parallel()
+
+	request := newMultipartImageRequest(t, "/scan-label", nil)
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		err: auth.ErrMissingAccessToken,
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"auth_required"`)) {
+		t.Fatalf("expected auth_required response body, got %s", recorder.Body.String())
+	}
+}
+
+func TestScanLabelRouteRejectsMissingImage(t *testing.T) {
+	t.Parallel()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("client_ocr", `{"text":"Machine wash cold"}`); err != nil {
+		t.Fatalf("write field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/scan-label", body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouter(labelparser.NewStubParser(), &stubGarmentStore{}, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"image_required"`)) {
+		t.Fatalf("expected image_required response body, got %s", recorder.Body.String())
 	}
 }
 
@@ -617,6 +711,38 @@ func TestDeleteScheduleRouteReturnsNotFound(t *testing.T) {
 	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"error":"schedule_not_found"`)) {
 		t.Fatalf("expected schedule_not_found response body, got %s", recorder.Body.String())
 	}
+}
+
+func newMultipartImageRequest(t *testing.T, path string, fields map[string]string) *http.Request {
+	t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", `form-data; name="image"; filename="linen-shirt.jpg"`)
+	header.Set("Content-Type", "image/png")
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+
+	if _, err := part.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}); err != nil {
+		t.Fatalf("write image body: %v", err)
+	}
+
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatalf("write multipart field %s: %v", key, err)
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, path, body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	return request
 }
 
 func pointerTo(value string) *string {
