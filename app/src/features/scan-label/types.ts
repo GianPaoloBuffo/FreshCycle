@@ -36,8 +36,18 @@ export type ClientOCRResult = {
 
 export type ClientSymbolDetection = {
   symbol: string;
+  class?: string;
+  label?: string;
   confidence: number | null;
   frame?: OCRFrame | null;
+};
+
+export type ScanLabelSymbolDetection = {
+  className: string;
+  label: string;
+  confidence: number;
+  boundingBox: OCRFrame | null;
+  source: string | null;
 };
 
 export type ScanField<TValue extends string> = {
@@ -78,6 +88,14 @@ export type ScanLabelResponse = {
   uncertainFields: CareLabelReviewField[];
   needsUserConfirmation: boolean;
   provider: string | null;
+  source: string | null;
+  route: string | null;
+  cacheHit: boolean;
+  imageHash: string | null;
+  paidFallbackUsed: boolean;
+  fallbackCallsAvoided: number;
+  routingReasons: string[];
+  symbolDetections: ScanLabelSymbolDetection[];
 };
 
 export type ScanLabelClientResult = {

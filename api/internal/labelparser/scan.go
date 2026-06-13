@@ -63,27 +63,36 @@ func (s *ClientSymbol) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err == nil {
 		s.Name = name
+		s.Class, _ = NormalizeLaundrySymbolClass(name)
+		s.Label = laundrySymbolLabel(s.Class, name)
 		return nil
 	}
 
 	var payload struct {
-		Name       string   `json:"name"`
-		Symbol     string   `json:"symbol"`
-		Label      string   `json:"label"`
-		Type       string   `json:"type"`
-		Confidence *float64 `json:"confidence"`
+		Name        string             `json:"name"`
+		Symbol      string             `json:"symbol"`
+		Label       string             `json:"label"`
+		Type        string             `json:"type"`
+		Class       string             `json:"class"`
+		Confidence  *float64           `json:"confidence"`
+		Box         *SymbolBoundingBox `json:"box"`
+		BoundingBox *SymbolBoundingBox `json:"bounding_box"`
+		Frame       *SymbolBoundingBox `json:"frame"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return err
 	}
 
-	for _, candidate := range []string{payload.Name, payload.Symbol, payload.Label, payload.Type} {
+	for _, candidate := range []string{payload.Name, payload.Symbol, payload.Label, payload.Type, payload.Class} {
 		if strings.TrimSpace(candidate) != "" {
 			s.Name = candidate
 			break
 		}
 	}
+	s.Class, _ = NormalizeLaundrySymbolClass(firstNonEmpty(payload.Class, payload.Symbol, payload.Label, payload.Type, payload.Name))
+	s.Label = firstNonEmpty(payload.Label, laundrySymbolLabel(s.Class, s.Name))
 	s.Confidence = payload.Confidence
+	s.Box = firstBox(payload.Box, payload.BoundingBox, payload.Frame)
 	return nil
 }
 
@@ -124,7 +133,9 @@ func decodeScanLabelProviderOutput(output string) (ScanLabelResult, error) {
 		if err := json.Unmarshal([]byte(output), &legacy); err != nil {
 			return ScanLabelResult{}, fmt.Errorf("decode legacy structured output: %w", err)
 		}
-		return scanFromParseLabelResult(legacy, careRuleEvidence{}, "multimodal provider", 0.62), nil
+		result := scanFromParseLabelResult(legacy, careRuleEvidence{}, "multimodal provider", 0.62)
+		result.PaidFallbackUsed = true
+		return result, nil
 	}
 
 	var result ScanLabelResult
@@ -132,6 +143,13 @@ func decodeScanLabelProviderOutput(output string) (ScanLabelResult, error) {
 		return ScanLabelResult{}, fmt.Errorf("decode scan-label structured output: %w", err)
 	}
 
+	if result.Provider == "" {
+		result.Provider = "multimodal_fallback"
+	}
+	if result.Route == "" {
+		result.Route = "multimodal_fallback"
+	}
+	result.PaidFallbackUsed = true
 	return normalizeScanLabelResult(result), nil
 }
 
@@ -139,6 +157,9 @@ func scanFromClientEvidence(input ScanLabelInput) (ScanLabelResult, bool) {
 	parts := make([]string, 0, 2)
 	if input.ClientOCR != nil && strings.TrimSpace(input.ClientOCR.Text) != "" {
 		parts = append(parts, input.ClientOCR.Text)
+	}
+	if detectedText := symbolDetectionsToCareText(input.DetectedSymbols); detectedText != "" {
+		parts = append(parts, detectedText)
 	}
 	if symbolText := clientSymbolsToCareText(input.ClientSymbols); symbolText != "" {
 		parts = append(parts, symbolText)
@@ -156,6 +177,9 @@ func scanFromClientEvidence(input ScanLabelInput) (ScanLabelResult, bool) {
 	confidence := clientEvidenceConfidence(input, evidence)
 	result := scanFromParseLabelResult(legacy, evidence, "client OCR and symbol hints", confidence)
 	result.Explanation = "FreshCycle inferred care instructions from client-provided OCR and symbol hints."
+	result.SymbolDetections = normalizeSymbolDetections(input.DetectedSymbols)
+	result.Provider = "local_rules"
+	result.Route = "local_rules"
 	return result, true
 }
 
@@ -217,6 +241,8 @@ func scanFromParseLabelResult(result ParseLabelResult, evidence careRuleEvidence
 		},
 		RawText:    rawText,
 		Confidence: confidence,
+		Provider:   providerFromSource(source),
+		Route:      routeFromSource(source),
 	}
 
 	scan.Wash.Summary = washSummary(scan.Wash)
@@ -227,6 +253,30 @@ func scanFromParseLabelResult(result ParseLabelResult, evidence careRuleEvidence
 	scan.Explanation = defaultScanExplanation(source, scan.Confidence)
 
 	return normalizeScanLabelResult(scan)
+}
+
+func providerFromSource(source string) string {
+	source = strings.ToLower(strings.TrimSpace(source))
+	switch {
+	case strings.Contains(source, "client") || strings.Contains(source, "rules"):
+		return "local_rules"
+	case strings.Contains(source, "ocr"):
+		return "server_ocr"
+	case strings.Contains(source, "fallback") || strings.Contains(source, "multimodal") || strings.Contains(source, "provider"):
+		return "multimodal_fallback"
+	case strings.Contains(source, "stub"):
+		return "stub"
+	default:
+		return ""
+	}
+}
+
+func routeFromSource(source string) string {
+	provider := providerFromSource(source)
+	if provider != "" {
+		return provider
+	}
+	return strings.ToLower(strings.TrimSpace(strings.ReplaceAll(source, " ", "_")))
 }
 
 func normalizeScanLabelResult(result ScanLabelResult) ScanLabelResult {
@@ -258,13 +308,112 @@ func normalizeScanLabelResult(result ScanLabelResult) ScanLabelResult {
 		result.Explanation = defaultScanExplanation("label parser", result.Confidence)
 	}
 	result.UncertainFields = mergeUniqueStrings(result.UncertainFields, defaultUncertainFields(result))
+	fillInstructionMetadata(&result)
+	result.SymbolDetections = normalizeSymbolDetections(result.SymbolDetections)
 	result.NeedsUserConfirmation = result.NeedsUserConfirmation || result.Confidence < 0.75 || len(result.UncertainFields) > 0
 
 	if result.UncertainFields == nil {
 		result.UncertainFields = []string{}
 	}
+	if result.RoutingReasons == nil {
+		result.RoutingReasons = []string{}
+	}
 
 	return result
+}
+
+func fillInstructionMetadata(result *ScanLabelResult) {
+	result.Wash.Confidence = normalizeConfidence(result.Wash.Confidence, defaultFieldConfidence(result.Confidence, result.Wash.Status, result.UncertainFields, "wash"))
+	result.Bleach.Confidence = normalizeConfidence(result.Bleach.Confidence, defaultFieldConfidence(result.Confidence, result.Bleach.Status, result.UncertainFields, "bleach"))
+	result.Drying.Confidence = normalizeConfidence(result.Drying.Confidence, defaultFieldConfidence(result.Confidence, result.Drying.Status, result.UncertainFields, "drying"))
+	result.Ironing.Confidence = normalizeConfidence(result.Ironing.Confidence, defaultFieldConfidence(result.Confidence, result.Ironing.Status, result.UncertainFields, "ironing"))
+	result.ProfessionalCleaning.Confidence = normalizeConfidence(result.ProfessionalCleaning.Confidence, defaultFieldConfidence(result.Confidence, result.ProfessionalCleaning.Status, result.UncertainFields, "professional_cleaning"))
+
+	if strings.TrimSpace(result.Wash.Explanation) == "" {
+		result.Wash.Explanation = instructionExplanation("wash", result.Wash.Summary, result.Wash.Confidence)
+	}
+	if strings.TrimSpace(result.Bleach.Explanation) == "" {
+		result.Bleach.Explanation = instructionExplanation("bleach", result.Bleach.Summary, result.Bleach.Confidence)
+	}
+	if strings.TrimSpace(result.Drying.Explanation) == "" {
+		result.Drying.Explanation = instructionExplanation("drying", result.Drying.Summary, result.Drying.Confidence)
+	}
+	if strings.TrimSpace(result.Ironing.Explanation) == "" {
+		result.Ironing.Explanation = instructionExplanation("ironing", result.Ironing.Summary, result.Ironing.Confidence)
+	}
+	if strings.TrimSpace(result.ProfessionalCleaning.Explanation) == "" {
+		result.ProfessionalCleaning.Explanation = instructionExplanation("professional cleaning", result.ProfessionalCleaning.Summary, result.ProfessionalCleaning.Confidence)
+	}
+
+	result.Wash.NeedsConfirmation = result.Wash.NeedsConfirmation || fieldNeedsConfirmation(result.Wash.Confidence, result.Wash.Status, result.UncertainFields, "wash")
+	result.Bleach.NeedsConfirmation = result.Bleach.NeedsConfirmation || fieldNeedsConfirmation(result.Bleach.Confidence, result.Bleach.Status, result.UncertainFields, "bleach")
+	result.Drying.NeedsConfirmation = result.Drying.NeedsConfirmation || fieldNeedsConfirmation(result.Drying.Confidence, result.Drying.Status, result.UncertainFields, "drying")
+	result.Ironing.NeedsConfirmation = result.Ironing.NeedsConfirmation || fieldNeedsConfirmation(result.Ironing.Confidence, result.Ironing.Status, result.UncertainFields, "ironing")
+	result.ProfessionalCleaning.NeedsConfirmation = result.ProfessionalCleaning.NeedsConfirmation || fieldNeedsConfirmation(result.ProfessionalCleaning.Confidence, result.ProfessionalCleaning.Status, result.UncertainFields, "professional_cleaning")
+}
+
+func defaultFieldConfidence(rootConfidence float64, status string, uncertainFields []string, field string) float64 {
+	confidence := rootConfidence
+	if confidence <= 0 {
+		confidence = 0.62
+	}
+	if status == "unknown" {
+		if confidence > 0.38 {
+			confidence = 0.38
+		}
+	}
+	if fieldIsUncertain(uncertainFields, field) && confidence > 0.64 {
+		confidence = 0.64
+	}
+	return confidence
+}
+
+func fieldNeedsConfirmation(confidence float64, status string, uncertainFields []string, field string) bool {
+	return status == "unknown" || confidence < 0.72 || fieldIsUncertain(uncertainFields, field)
+}
+
+func fieldIsUncertain(uncertainFields []string, field string) bool {
+	for _, uncertainField := range uncertainFields {
+		if uncertainField == field || strings.HasPrefix(uncertainField, field+".") {
+			return true
+		}
+	}
+	return false
+}
+
+func instructionExplanation(field string, summary string, confidence float64) string {
+	if confidence < 0.55 {
+		return "FreshCycle could not confidently determine the " + field + " instruction."
+	}
+	return summary
+}
+
+func shouldAcceptLocalScan(result ScanLabelResult, minConfidence float64, minKnownFields int) bool {
+	result = normalizeScanLabelResult(result)
+	if result.Confidence < minConfidence {
+		return false
+	}
+	return knownInstructionCount(result) >= minKnownFields
+}
+
+func knownInstructionCount(result ScanLabelResult) int {
+	count := 0
+	if result.Wash.Status != washStatusUnknown {
+		count++
+	}
+	if result.Bleach.Status != bleachStatusUnknown {
+		count++
+	}
+	if result.Drying.Status != dryingStatusUnknown {
+		count++
+	}
+	if result.Ironing.Status != ironingStatusUnknown {
+		count++
+	}
+	if result.ProfessionalCleaning.Status != cleaningStatusUnknown {
+		count++
+	}
+	return count
 }
 
 func inferScanWashStatus(result ParseLabelResult, normalized string, compact string) string {
@@ -527,6 +676,14 @@ func clientEvidenceConfidence(input ScanLabelInput, evidence careRuleEvidence) f
 	}
 
 	symbolConfidence, ok := averageSymbolConfidence(input.ClientSymbols)
+	if detectedConfidence, detectedOK := averageDetectionConfidence(input.DetectedSymbols); detectedOK {
+		if ok {
+			symbolConfidence = (symbolConfidence + detectedConfidence) / 2
+		} else {
+			symbolConfidence = detectedConfidence
+			ok = true
+		}
+	}
 	if ok {
 		if input.ClientOCR != nil && strings.TrimSpace(input.ClientOCR.Text) != "" {
 			confidence = confidence*0.7 + symbolConfidence*0.3
@@ -557,6 +714,19 @@ func averageSymbolConfidence(symbols []ClientSymbol) (float64, bool) {
 	return total / float64(count), true
 }
 
+func averageDetectionConfidence(detections []SymbolDetection) (float64, bool) {
+	var total float64
+	var count int
+	for _, detection := range detections {
+		total += normalizeConfidence(detection.Confidence, 0.65)
+		count++
+	}
+	if count == 0 {
+		return 0, false
+	}
+	return total / float64(count), true
+}
+
 func normalizeConfidence(value float64, fallback float64) float64 {
 	if value <= 0 {
 		value = fallback
@@ -576,7 +746,19 @@ func normalizeConfidence(value float64, fallback float64) float64 {
 func clientSymbolsToCareText(symbols []ClientSymbol) string {
 	phrases := make([]string, 0, len(symbols))
 	for _, symbol := range symbols {
-		name := normalizeForRules(strings.NewReplacer("_", " ", "-", " ").Replace(symbol.Name))
+		class := strings.TrimSpace(symbol.Class)
+		if class == "" {
+			class, _ = NormalizeLaundrySymbolClass(firstNonEmpty(symbol.Name, symbol.Label))
+		}
+		if phrase := laundrySymbolImpliedText(class); phrase != "" {
+			phrases = append(phrases, phrase)
+			if symbolNameImpliesGentleWash(symbol) {
+				phrases = append(phrases, "delicate cycle")
+			}
+			continue
+		}
+
+		name := normalizeForRules(strings.NewReplacer("_", " ", "-", " ").Replace(firstNonEmpty(symbol.Name, symbol.Label, symbol.Class)))
 		compact := compactForRules(name)
 		switch {
 		case containsAny(name, "do not wash", "dont wash") || containsAny(compact, "donotwash", "dontwash"):
@@ -617,6 +799,21 @@ func clientSymbolsToCareText(symbols []ClientSymbol) string {
 			phrases = append(phrases, "dry clean only")
 		case containsAny(name, "dry clean", "professional clean"):
 			phrases = append(phrases, "dry clean")
+		}
+	}
+	return strings.Join(phrases, " ")
+}
+
+func symbolNameImpliesGentleWash(symbol ClientSymbol) bool {
+	name := normalizeForRules(strings.NewReplacer("_", " ", "-", " ").Replace(firstNonEmpty(symbol.Name, symbol.Label, symbol.Class)))
+	return containsAny(name, "wash", "tub") && containsAny(name, "underline", "one bar", "gentle", "delicate")
+}
+
+func symbolDetectionsToCareText(detections []SymbolDetection) string {
+	phrases := make([]string, 0, len(detections))
+	for _, detection := range detections {
+		if phrase := laundrySymbolImpliedText(detection.Class); phrase != "" {
+			phrases = append(phrases, phrase)
 		}
 	}
 	return strings.Join(phrases, " ")
@@ -670,4 +867,36 @@ func mergeUniqueStrings(first []string, second []string) []string {
 		}
 	}
 	return result
+}
+
+func appendUniqueString(values []string, next string) []string {
+	next = strings.TrimSpace(next)
+	if next == "" {
+		return values
+	}
+	for _, value := range values {
+		if value == next {
+			return values
+		}
+	}
+	return append(values, next)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstBox(values ...*SymbolBoundingBox) *SymbolBoundingBox {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
 }

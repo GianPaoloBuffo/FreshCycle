@@ -13,6 +13,7 @@ import {
   ScanLabelCareInstructions,
   ScanLabelClientResult,
   ScanLabelResponse,
+  ScanLabelSymbolDetection,
   WashValue,
 } from '@/features/scan-label/types';
 
@@ -173,7 +174,15 @@ export function normalizeScanLabelResponse(rawResponse: unknown, clientOCR: Clie
         root.needs_user_confirmation ??
         (confidence < 0.76 || uncertainFields.length > 0)
     ),
-    provider: nullableString(root.provider ?? root.parser ?? root.source),
+    provider: nullableString(root.provider ?? root.parser),
+    source: nullableString(root.source),
+    route: nullableString(root.route ?? asRecord(root.routing)?.decision),
+    cacheHit: booleanValue(root.cacheHit ?? root.cache_hit ?? asRecord(root.routing)?.cache_hit),
+    imageHash: nullableString(root.imageHash ?? root.image_hash ?? asRecord(root.routing)?.image_hash),
+    paidFallbackUsed: booleanValue(root.paidFallbackUsed ?? root.paid_fallback_used),
+    fallbackCallsAvoided: nonNegativeInteger(root.fallbackCallsAvoided ?? root.fallback_calls_avoided),
+    routingReasons: stringArray(root.routingReasons ?? root.routing_reasons),
+    symbolDetections: normalizeSymbolDetections(root.symbolDetections ?? root.symbol_detections ?? root.detections),
   };
 }
 
@@ -472,6 +481,51 @@ function normalizeField<TValue extends string>(rawValue: unknown, fallback: Scan
   };
 }
 
+function normalizeSymbolDetections(value: unknown): ScanLabelSymbolDetection[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      const raw = asRecord(entry);
+      if (!raw) {
+        return null;
+      }
+
+      const className = stringValue(raw.className ?? raw.class_name ?? raw.class ?? raw.symbol ?? raw.name);
+      if (!className) {
+        return null;
+      }
+
+      return {
+        className,
+        label: stringValue(raw.label ?? raw.name ?? className),
+        confidence: clampConfidence(raw.confidence),
+        boundingBox: normalizeBoundingBox(raw.boundingBox ?? raw.bounding_box ?? raw.bbox ?? raw.box ?? raw.frame),
+        source: nullableString(raw.source),
+      };
+    })
+    .filter((entry): entry is ScanLabelSymbolDetection => entry !== null);
+}
+
+function normalizeBoundingBox(value: unknown) {
+  const raw = asRecord(value);
+  if (!raw) {
+    return null;
+  }
+
+  const x = asNullableNumber(raw.x ?? raw.left ?? raw.originX);
+  const y = asNullableNumber(raw.y ?? raw.top ?? raw.originY);
+  const width = asNullableNumber(raw.width ?? raw.w);
+  const height = asNullableNumber(raw.height ?? raw.h);
+  if (x === null || y === null || width === null || height === null) {
+    return null;
+  }
+
+  return { x, y, width, height };
+}
+
 function normalizeUncertainFields(value: unknown) {
   return stringArray(value)
     .map((field) => field.trim().split('.')[0])
@@ -560,6 +614,18 @@ function stringValue(value: unknown) {
 function nullableString(value: unknown) {
   const nextValue = stringValue(value);
   return nextValue ? nextValue : null;
+}
+
+function booleanValue(value: unknown) {
+  return value === true || value === 'true';
+}
+
+function nonNegativeInteger(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
 }
 
 function stringArray(value: unknown) {

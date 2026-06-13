@@ -91,6 +91,61 @@ describe('normalizeScanLabelResponse', () => {
     expect(scan.uncertainFields).toContain('drying');
     expect(scan.needsUserConfirmation).toBe(true);
   });
+
+  it('preserves backend field metadata, symbols, and cache routing details', () => {
+    const scan = normalizeScanLabelResponse({
+      provider: 'server_ocr',
+      route: 'local_rules',
+      cache_hit: true,
+      image_hash: 'abc123',
+      paid_fallback_used: false,
+      fallback_calls_avoided: 1,
+      routing_reasons: ['image_hash_cache_hit'],
+      confidence: 0.88,
+      symbol_detections: [
+        {
+          class: 'bleach_do_not_bleach',
+          label: 'do not bleach',
+          confidence: 0.93,
+          bounding_box: { x: 10, y: 20, width: 30, height: 40 },
+          source: 'client_detector',
+        },
+      ],
+      wash: {
+        status: 'machine_wash',
+        max_temperature_c: 30,
+        confidence: 0.91,
+        explanation: 'Tub and 30C were detected.',
+        needs_confirmation: false,
+      },
+      bleach: {
+        status: 'do_not_bleach',
+        confidence: 0.93,
+        explanation: 'Crossed triangle was detected.',
+        needs_confirmation: false,
+      },
+      drying: { status: 'unknown', confidence: 0.31, explanation: 'No drying mark.', needs_confirmation: true },
+      ironing: { status: 'iron_allowed', temperature: 'low', confidence: 0.82, explanation: 'One-dot iron.', needs_confirmation: false },
+      professional_cleaning: { status: 'unknown', confidence: 0.25, explanation: 'No circle mark.', needs_confirmation: true },
+    });
+
+    expect(scan.provider).toBe('server_ocr');
+    expect(scan.route).toBe('local_rules');
+    expect(scan.cacheHit).toBe(true);
+    expect(scan.imageHash).toBe('abc123');
+    expect(scan.fallbackCallsAvoided).toBe(1);
+    expect(scan.routingReasons).toContain('image_hash_cache_hit');
+    expect(scan.care.wash.confidence).toBe(0.91);
+    expect(scan.care.wash.explanation).toBe('Tub and 30C were detected.');
+    expect(scan.care.drying.needsConfirmation).toBe(true);
+    expect(scan.symbolDetections[0]).toEqual({
+      className: 'bleach_do_not_bleach',
+      label: 'do not bleach',
+      confidence: 0.93,
+      boundingBox: { x: 10, y: 20, width: 30, height: 40 },
+      source: 'client_detector',
+    });
+  });
 });
 
 describe('buildParsedLabelResult', () => {

@@ -63,15 +63,18 @@ func (p HybridParser) ScanLabel(ctx context.Context, input ScanLabelInput) (Scan
 		return ScanLabelResult{}, ErrProviderUnavailable
 	}
 
-	if result, ok := scanFromClientEvidence(input); ok && result.Confidence >= 0.75 {
-		log.Printf("hybrid scan-label parser used client evidence: confidence=%.2f", result.Confidence)
+	if result, ok := scanFromClientEvidence(input); ok && shouldAcceptLocalScan(result, 0.82, 3) {
+		result.RoutingReasons = appendUniqueString(result.RoutingReasons, "high_confidence_client_evidence")
+		log.Printf("hybrid scan-label parser used client evidence: confidence=%.2f known_fields=%d", result.Confidence, knownInstructionCount(result))
 		return result, nil
 	}
 
 	ocrDetails, ocrErr := p.primary.ParseLabelWithDetails(ctx, input.ParseLabelInput)
 	if ocrErr == nil && !ocrDetails.ShouldFallback() {
 		log.Printf("hybrid scan-label parser used ocr: confidence=%.1f word_count=%d keyword_hits=%d", ocrDetails.AverageConfidence, ocrDetails.WordCount, ocrDetails.KeywordHits)
-		return scanFromOCRDetails(ocrDetails), nil
+		result := scanFromOCRDetails(ocrDetails)
+		result.RoutingReasons = appendUniqueString(result.RoutingReasons, "ocr_confidence_route")
+		return result, nil
 	}
 
 	fallbackReason := "ocr_error"
@@ -86,17 +89,25 @@ func (p HybridParser) ScanLabel(ctx context.Context, input ScanLabelInput) (Scan
 		if fallbackResult.Explanation == "" {
 			fallbackResult.Explanation = "FreshCycle used multimodal fallback after OCR needed review."
 		}
+		fallbackResult.Provider = "multimodal_fallback"
+		fallbackResult.Route = "multimodal_fallback"
+		fallbackResult.PaidFallbackUsed = true
+		fallbackResult.RoutingReasons = appendUniqueString(fallbackResult.RoutingReasons, fallbackReason)
 		log.Printf("hybrid scan-label parser used fallback: reason=%s", fallbackReason)
 		return normalizeScanLabelResult(fallbackResult), nil
 	}
 
 	if ocrErr == nil && ocrDetails.HasUsablePartial() {
 		log.Printf("hybrid scan-label parser returning partial ocr after fallback failure: reason=%s fallback_error=%T", fallbackReason, fallbackErr)
-		return scanFromOCRDetails(ocrDetails), nil
+		result := scanFromOCRDetails(ocrDetails)
+		result.Route = "partial_server_ocr"
+		result.RoutingReasons = appendUniqueString(result.RoutingReasons, "fallback_failed")
+		return result, nil
 	}
 
 	if clientResult, ok := scanFromClientEvidence(input); ok {
 		log.Printf("hybrid scan-label parser returning client evidence after fallback failure: reason=%s fallback_error=%T", fallbackReason, fallbackErr)
+		clientResult.RoutingReasons = appendUniqueString(clientResult.RoutingReasons, "fallback_failed")
 		return clientResult, nil
 	}
 

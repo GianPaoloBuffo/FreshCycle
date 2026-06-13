@@ -38,6 +38,10 @@ The API listens on `API_PORT`, defaulting to `8080`.
 - `GEMINI_API_KEY`: required when `LABEL_PARSER_PROVIDER=hybrid`
 - `GEMINI_MODEL`: optional, defaults to `gemini-3.1-flash-lite`
 - `GEMINI_BASE_URL`: optional, defaults to `https://generativelanguage.googleapis.com/v1beta`
+- `SYMBOL_DETECTOR_ENABLED`: optional, defaults to `true`; enables the local taxonomy/rules detector that normalizes client symbol hints into backend detections
+- `SCAN_CACHE_ENABLED`: optional, defaults to `true`; caches structured scan interpretations by SHA-256 image hash in API memory
+- `SCAN_CACHE_TTL`: optional Go duration, defaults to `24h`; controls in-memory scan cache retention
+- `SCAN_CACHE_MAX_ENTRIES`: optional, defaults to `512`; caps in-memory scan cache entries
 - `OPENAI_API_KEY`: required when `LABEL_PARSER_PROVIDER=openai`
 - `OPENAI_MODEL`: optional, defaults to `gpt-4.1-mini`
 - `OPENAI_BASE_URL`: optional override for the Responses API URL
@@ -82,3 +86,23 @@ brew install tesseract tesseract-lang
 ```
 
 The Docker deployment installs Tesseract plus English and Spanish language packs.
+
+## Scan-label Phase 2 path
+
+`POST /scan-label` now runs a Phase 2 pipeline before invoking paid fallback providers:
+
+1. Hash the cropped image bytes with SHA-256 and check the in-memory scan cache.
+2. Normalize client detector hints through the laundry-symbol taxonomy.
+3. Merge OCR text and symbol detections through deterministic care rules.
+4. Route high-confidence local/rules or OCR results without a multimodal fallback.
+5. Use Gemini/OpenAI-style multimodal fallback only for ambiguous or conflicting scans.
+
+Responses include field-level `confidence`, `explanation`, and `needs_confirmation`, plus `symbol_detections`, `provider`, `route`, `cache_hit`, `image_hash`, `paid_fallback_used`, `fallback_calls_avoided`, and `routing_reasons`.
+
+The cache stores only the image hash and structured interpretation metadata; it does not retain the uploaded image bytes.
+
+See:
+
+- `docs/laundry-symbol-taxonomy.md`
+- `docs/laundry-symbol-dataset.md`
+- `models/laundry-symbol-detector/v0.1.0/manifest.json`

@@ -69,6 +69,43 @@ func TestLoadDefaultsOCRAndGeminiConfig(t *testing.T) {
 	if cfg.GeminiBaseURL != "https://generativelanguage.googleapis.com/v1beta" {
 		t.Fatalf("expected default Gemini base URL, got %q", cfg.GeminiBaseURL)
 	}
+	if !cfg.ScanCacheEnabled {
+		t.Fatal("expected scan cache to default enabled")
+	}
+	if cfg.ScanCacheMaxEntries != 512 {
+		t.Fatalf("expected default scan cache max entries, got %d", cfg.ScanCacheMaxEntries)
+	}
+	if !cfg.SymbolDetectorEnabled {
+		t.Fatal("expected symbol detector to default enabled")
+	}
+}
+
+func TestLoadScanPipelineConfigOverrides(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.LoadFromMap(map[string]string{
+		"SUPABASE_DB_URL":         "postgres://example",
+		"SCAN_CACHE_ENABLED":      "false",
+		"SCAN_CACHE_TTL":          "2h",
+		"SCAN_CACHE_MAX_ENTRIES":  "128",
+		"SYMBOL_DETECTOR_ENABLED": "false",
+	})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.ScanCacheEnabled {
+		t.Fatal("expected scan cache override to disable cache")
+	}
+	if cfg.ScanCacheTTL.String() != "2h0m0s" {
+		t.Fatalf("expected scan cache TTL override, got %s", cfg.ScanCacheTTL)
+	}
+	if cfg.ScanCacheMaxEntries != 128 {
+		t.Fatalf("expected scan cache max entries override, got %d", cfg.ScanCacheMaxEntries)
+	}
+	if cfg.SymbolDetectorEnabled {
+		t.Fatal("expected symbol detector override to disable detector")
+	}
 }
 
 func TestValidateAllowsOCRWithoutGeminiKey(t *testing.T) {

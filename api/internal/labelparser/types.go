@@ -30,46 +30,81 @@ type ClientOCR struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
+type SymbolBoundingBox struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
 type ClientSymbol struct {
-	Name       string   `json:"name"`
-	Confidence *float64 `json:"confidence,omitempty"`
+	Name       string             `json:"name"`
+	Class      string             `json:"class,omitempty"`
+	Label      string             `json:"label,omitempty"`
+	Confidence *float64           `json:"confidence,omitempty"`
+	Box        *SymbolBoundingBox `json:"box,omitempty"`
 }
 
 type ScanLabelInput struct {
 	ParseLabelInput
-	ClientOCR     *ClientOCR
-	ClientSymbols []ClientSymbol
+	ClientOCR       *ClientOCR
+	ClientSymbols   []ClientSymbol
+	DetectedSymbols []SymbolDetection
+	ImageHash       string
+}
+
+type SymbolDetection struct {
+	Class      string             `json:"class"`
+	Label      string             `json:"label"`
+	Confidence float64            `json:"confidence"`
+	Box        *SymbolBoundingBox `json:"box,omitempty"`
+	Source     string             `json:"source"`
 }
 
 type WashInstruction struct {
-	Status          string  `json:"status"`
-	MaxTemperatureC *int    `json:"max_temperature_c"`
-	Cycle           *string `json:"cycle"`
-	Summary         string  `json:"summary"`
+	Status            string  `json:"status"`
+	MaxTemperatureC   *int    `json:"max_temperature_c"`
+	Cycle             *string `json:"cycle"`
+	Summary           string  `json:"summary"`
+	Confidence        float64 `json:"confidence"`
+	Explanation       string  `json:"explanation"`
+	NeedsConfirmation bool    `json:"needs_confirmation"`
 }
 
 type BleachInstruction struct {
-	Status  string  `json:"status"`
-	Kind    *string `json:"kind"`
-	Summary string  `json:"summary"`
+	Status            string  `json:"status"`
+	Kind              *string `json:"kind"`
+	Summary           string  `json:"summary"`
+	Confidence        float64 `json:"confidence"`
+	Explanation       string  `json:"explanation"`
+	NeedsConfirmation bool    `json:"needs_confirmation"`
 }
 
 type DryingInstruction struct {
-	Status      string  `json:"status"`
-	Temperature *string `json:"temperature"`
-	Summary     string  `json:"summary"`
+	Status            string  `json:"status"`
+	Temperature       *string `json:"temperature"`
+	Summary           string  `json:"summary"`
+	Confidence        float64 `json:"confidence"`
+	Explanation       string  `json:"explanation"`
+	NeedsConfirmation bool    `json:"needs_confirmation"`
 }
 
 type IroningInstruction struct {
-	Status      string  `json:"status"`
-	Temperature *string `json:"temperature"`
-	Summary     string  `json:"summary"`
+	Status            string  `json:"status"`
+	Temperature       *string `json:"temperature"`
+	Summary           string  `json:"summary"`
+	Confidence        float64 `json:"confidence"`
+	Explanation       string  `json:"explanation"`
+	NeedsConfirmation bool    `json:"needs_confirmation"`
 }
 
 type ProfessionalCleaningInstruction struct {
-	Status  string  `json:"status"`
-	Method  *string `json:"method"`
-	Summary string  `json:"summary"`
+	Status            string  `json:"status"`
+	Method            *string `json:"method"`
+	Summary           string  `json:"summary"`
+	Confidence        float64 `json:"confidence"`
+	Explanation       string  `json:"explanation"`
+	NeedsConfirmation bool    `json:"needs_confirmation"`
 }
 
 type ScanLabelResult struct {
@@ -83,6 +118,14 @@ type ScanLabelResult struct {
 	Explanation           string                          `json:"explanation"`
 	UncertainFields       []string                        `json:"uncertain_fields"`
 	NeedsUserConfirmation bool                            `json:"needs_user_confirmation"`
+	SymbolDetections      []SymbolDetection               `json:"symbol_detections"`
+	Provider              string                          `json:"provider,omitempty"`
+	Route                 string                          `json:"route,omitempty"`
+	CacheHit              bool                            `json:"cache_hit"`
+	ImageHash             string                          `json:"image_hash,omitempty"`
+	PaidFallbackUsed      bool                            `json:"paid_fallback_used"`
+	FallbackCallsAvoided  int                             `json:"fallback_calls_avoided,omitempty"`
+	RoutingReasons        []string                        `json:"routing_reasons"`
 }
 
 type Scanner interface {

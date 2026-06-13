@@ -23,7 +23,7 @@ func buildScanPrompt(input ScanLabelInput) string {
 	}
 
 	return fmt.Sprintf(
-		"Extract Phase 1 garment care-label scanner details from this cropped label image. Return only JSON matching the provided schema. Use the enum status fields so a client can render the result without parsing prose. Be conservative: use unknown and add the field path to uncertain_fields when an instruction is not visible or conflicts. confidence must be 0.0 to 1.0. needs_user_confirmation should be true when confidence is below 0.75 or any field is uncertain. Include readable label text in raw_text. Filename: %s. MIME type: %s.\n%s",
+		"Extract garment care-label scanner details from this cropped label image. Return only JSON matching the provided schema. Use the enum status fields so a client can render the result without parsing prose. For each instruction object, confidence must be 0.0 to 1.0, explanation should state the visible evidence, and needs_confirmation should be true when that field is uncertain. Be conservative: use unknown and add the field path to uncertain_fields when an instruction is not visible or conflicts. Top-level confidence must be 0.0 to 1.0. needs_user_confirmation should be true when confidence is below 0.75 or any field is uncertain. Include readable label text in raw_text. Filename: %s. MIME type: %s.\n%s",
 		input.Filename,
 		input.MIMEType,
 		clientContext,
@@ -112,6 +112,30 @@ var scanLabelResponseSchema = map[string]any{
 		"needs_user_confirmation": map[string]any{
 			"type": "boolean",
 		},
+		"symbol_detections": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"class":      map[string]any{"type": "string"},
+					"label":      map[string]any{"type": "string"},
+					"confidence": map[string]any{"type": "number", "minimum": 0, "maximum": 1},
+					"source":     map[string]any{"type": "string"},
+					"box": map[string]any{
+						"type": []string{"object", "null"},
+						"properties": map[string]any{
+							"x":      map[string]any{"type": "number"},
+							"y":      map[string]any{"type": "number"},
+							"width":  map[string]any{"type": "number"},
+							"height": map[string]any{"type": "number"},
+						},
+						"required": []string{"x", "y", "width", "height"},
+					},
+				},
+				"required": []string{"class", "label", "confidence", "source", "box"},
+			},
+		},
 	},
 	"required": []string{
 		"wash",
@@ -124,10 +148,15 @@ var scanLabelResponseSchema = map[string]any{
 		"explanation",
 		"uncertain_fields",
 		"needs_user_confirmation",
+		"symbol_detections",
 	},
 }
 
 func instructionObjectSchema(properties map[string]any, required []string) map[string]any {
+	properties["confidence"] = map[string]any{"type": "number", "minimum": 0, "maximum": 1}
+	properties["explanation"] = map[string]any{"type": "string"}
+	properties["needs_confirmation"] = map[string]any{"type": "boolean"}
+	required = append(required, "confidence", "explanation", "needs_confirmation")
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,

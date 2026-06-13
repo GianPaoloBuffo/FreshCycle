@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const defaultPort = "8080"
@@ -14,6 +16,8 @@ const defaultOCRLanguages = "eng+spa"
 const defaultLabelParserFallbackProvider = "gemini"
 const defaultGeminiModel = "gemini-3.1-flash-lite"
 const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+const defaultScanCacheTTL = 24 * time.Hour
+const defaultScanCacheMaxEntries = 512
 
 type Config struct {
 	Port                        string
@@ -28,6 +32,10 @@ type Config struct {
 	GeminiAPIKey                string
 	GeminiModel                 string
 	GeminiBaseURL               string
+	ScanCacheEnabled            bool
+	ScanCacheTTL                time.Duration
+	ScanCacheMaxEntries         int
+	SymbolDetectorEnabled       bool
 	AllowedOrigins              []string
 	SupabaseProjectURL          string
 	SupabaseSecretKey           string
@@ -61,6 +69,10 @@ func LoadFromMap(values map[string]string) (Config, error) {
 		GeminiAPIKey:                lookup("GEMINI_API_KEY"),
 		GeminiModel:                 getEnvFromLookup(lookup, "GEMINI_MODEL", defaultGeminiModel),
 		GeminiBaseURL:               getEnvFromLookup(lookup, "GEMINI_BASE_URL", defaultGeminiBaseURL),
+		ScanCacheEnabled:            getBoolEnvFromLookup(lookup, "SCAN_CACHE_ENABLED", true),
+		ScanCacheTTL:                getDurationEnvFromLookup(lookup, "SCAN_CACHE_TTL", defaultScanCacheTTL),
+		ScanCacheMaxEntries:         getIntEnvFromLookup(lookup, "SCAN_CACHE_MAX_ENTRIES", defaultScanCacheMaxEntries),
+		SymbolDetectorEnabled:       getBoolEnvFromLookup(lookup, "SYMBOL_DETECTOR_ENABLED", true),
 		AllowedOrigins:              splitCSVEnv(getEnvFromLookup(lookup, "API_ALLOWED_ORIGINS", defaultAllowedOrigins)),
 		SupabaseProjectURL:          getEnvFromLookup(lookup, "SUPABASE_URL", ""),
 		SupabaseSecretKey:           getEnvFromLookup(lookup, "SUPABASE_SECRET_KEY", ""),
@@ -121,6 +133,45 @@ func getEnvFromLookup(lookup func(string) string, key string, fallback string) s
 	}
 
 	return value
+}
+
+func getBoolEnvFromLookup(lookup func(string) string, key string, fallback bool) bool {
+	value := strings.TrimSpace(lookup(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getDurationEnvFromLookup(lookup func(string) string, key string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(lookup(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := time.ParseDuration(value)
+	if err == nil && parsed > 0 {
+		return parsed
+	}
+	return fallback
+}
+
+func getIntEnvFromLookup(lookup func(string) string, key string, fallback int) int {
+	value := strings.TrimSpace(lookup(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err == nil && parsed > 0 {
+		return parsed
+	}
+	return fallback
 }
 
 func splitCSVEnv(value string) []string {
