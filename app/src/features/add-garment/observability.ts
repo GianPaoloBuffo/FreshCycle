@@ -10,10 +10,12 @@ type AddGarmentEventName =
   | 'label_upload_failed'
   | 'review_form_submitted'
   | 'review_form_failed'
+  | 'scan_review_event_recorded'
+  | 'scan_review_event_failed'
   | 'garment_save_succeeded'
   | 'garment_save_failed';
 
-type EventPayload = Record<string, string | number | boolean | null | undefined>;
+type EventPayload = Record<string, unknown>;
 
 export function logAddGarmentEvent(event: AddGarmentEventName, payload: EventPayload = {}) {
   const timestamp = new Date().toISOString();

@@ -34,10 +34,43 @@ type ScanCareLabelInput = {
   quality: CaptureQualityResult;
 };
 
+export type ScanReviewDecision = 'accept' | 'correct' | 'needs_label' | 'discard' | 'privacy_delete';
+
+export type ScanFieldCorrection = {
+  fieldName: ScanAccuracyField;
+  predictedValue: string;
+  correctedValue: string;
+  errorSource: 'ocr' | 'symbol_detection' | 'rule_interpretation' | 'user_override' | 'unknown';
+  confidence?: number | null;
+};
+
+export type ScanAccuracyField =
+  | 'wash_temperature'
+  | 'wash_cycle'
+  | 'hand_wash'
+  | 'bleach'
+  | 'tumble_dry'
+  | 'natural_drying'
+  | 'iron'
+  | 'dry_clean'
+  | 'wet_clean';
+
+export type RecordScanReviewDecisionInput = {
+  scanEventId?: string | null;
+  reviewQueueId?: string | null;
+  imageHash?: string | null;
+  decision: ScanReviewDecision;
+  correctedFields: ScanAccuracyField[];
+  fieldCorrections: ScanFieldCorrection[];
+  finalUserCorrection: Record<string, unknown>;
+  notes?: string;
+};
+
 const unknownCare: ScanLabelCareInstructions = {
   wash: {
     value: 'unknown',
     temperatureC: null,
+    cycle: null,
     confidence: 0,
     explanation: 'No wash instruction was confidently detected.',
     needsConfirmation: true,
@@ -120,6 +153,49 @@ export async function scanCareLabelPhoto(
   };
 }
 
+export async function recordScanReviewDecision(
+  input: RecordScanReviewDecisionInput,
+  deps: ScanCareLabelDeps = {}
+) {
+  const apiBaseUrl = deps.apiBaseUrl ?? getAppEnv().apiBaseUrl;
+  const fetchImpl = deps.fetchImpl ?? ((request, init) => fetch(request, init));
+  const accessToken = deps.accessToken ?? null;
+
+  if (!apiBaseUrl || !accessToken || (!input.scanEventId && !input.reviewQueueId)) {
+    return null;
+  }
+
+  const response = await fetchImpl(`${apiBaseUrl.replace(/\/$/, '')}/scan-label/review-events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      scan_event_id: input.scanEventId ?? null,
+      review_queue_id: input.reviewQueueId ?? null,
+      image_hash: input.imageHash ?? null,
+      decision: input.decision,
+      corrected_fields: input.correctedFields,
+      field_corrections: input.fieldCorrections.map((correction) => ({
+        field_name: correction.fieldName,
+        predicted_value: correction.predictedValue,
+        corrected_value: correction.correctedValue,
+        error_source: correction.errorSource,
+        confidence: correction.confidence ?? null,
+      })),
+      final_user_correction: input.finalUserCorrection,
+      notes: input.notes ?? '',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new AddGarmentActionError(response.status === 401 ? 'auth-required' : 'processing-failed');
+  }
+
+  return response.json();
+}
+
 export function normalizeScanLabelResponse(rawResponse: unknown, clientOCR: ClientOCRResult | null = null): ScanLabelResponse {
   const raw = asRecord(rawResponse) ?? {};
   const root = asRecord(raw.result) ?? raw;
@@ -148,6 +224,8 @@ export function normalizeScanLabelResponse(rawResponse: unknown, clientOCR: Clie
         dry_clean_allowed: 'dry_clean',
         dry_clean_only: 'professional_clean_only',
         do_not_dry_clean: 'do_not_dry_clean',
+        wet_clean: 'wet_clean',
+        do_not_wet_clean: 'do_not_wet_clean',
         unknown: 'unknown',
       },
       confidenceLike(root.confidence),
@@ -179,6 +257,10 @@ export function normalizeScanLabelResponse(rawResponse: unknown, clientOCR: Clie
     route: nullableString(root.route ?? asRecord(root.routing)?.decision),
     cacheHit: booleanValue(root.cacheHit ?? root.cache_hit ?? asRecord(root.routing)?.cache_hit),
     imageHash: nullableString(root.imageHash ?? root.image_hash ?? asRecord(root.routing)?.image_hash),
+    scanEventId: nullableString(root.scanEventId ?? root.scan_event_id),
+    reviewQueueId: nullableString(root.reviewQueueId ?? root.review_queue_id),
+    reviewReasons: stringArray(root.reviewReasons ?? root.review_reasons),
+    activeLearningPriority: nullableNumber(root.activeLearningPriority ?? root.active_learning_priority),
     paidFallbackUsed: booleanValue(root.paidFallbackUsed ?? root.paid_fallback_used),
     fallbackCallsAvoided: nonNegativeInteger(root.fallbackCallsAvoided ?? root.fallback_calls_avoided),
     routingReasons: stringArray(root.routingReasons ?? root.routing_reasons),
@@ -205,6 +287,7 @@ function normalizeWashField(rawValue: unknown, rootConfidence: number, forcedUnc
   return {
     ...field,
     temperatureC: asNullableNumber(getFirst(raw, ['temperatureC', 'temperature_c', 'max_temperature_c', 'wash_temp_max'])),
+    cycle: nullableString(raw?.cycle),
   };
 }
 
@@ -370,6 +453,10 @@ async function buildScanMultipartBody(
     formData.append('client_symbols', JSON.stringify(input.clientSymbols));
   }
 
+  formData.append('capture_source', input.photo.source);
+  formData.append('image_scope', 'label_crop');
+  formData.append('capture_quality', JSON.stringify(input.quality));
+
   return formData;
 }
 
@@ -449,6 +536,10 @@ function buildCareInstructions(scan: ScanLabelResponse) {
     instructions.push('Professional clean only');
   } else if (professionalCleaning.value === 'do_not_dry_clean') {
     instructions.push('Do not dry clean');
+  } else if (professionalCleaning.value === 'wet_clean') {
+    instructions.push('Wet clean allowed');
+  } else if (professionalCleaning.value === 'do_not_wet_clean') {
+    instructions.push('Do not wet clean');
   }
 
   return instructions;
@@ -596,6 +687,11 @@ function asNullableNumber(value: unknown): number | null {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nullableNumber(value: unknown) {
+  const parsed = asNullableNumber(value);
+  return parsed === null ? null : parsed;
 }
 
 function clampConfidence(value: unknown) {

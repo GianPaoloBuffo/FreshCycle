@@ -30,6 +30,14 @@ datasets/laundry-symbols/v0.1.0/
 
 The dataset itself is not committed to git. Store only a manifest with source, license, class coverage, split counts, checksum, and known gaps.
 
+For production examples collected through GP-53, use the database-backed review flow first:
+
+1. `scan_review_queue` records ambiguous scans with OCR output, detector output, model result, and privacy metadata.
+2. `scan_review_decisions` records accept/correct/needs-label/discard/privacy-delete decisions.
+3. Corrected and needs-label decisions promote rows into `scan_annotation_examples`.
+4. Bounding boxes and modifiers are tracked in `scan_symbol_annotations`.
+5. Dataset manifests in `datasets/laundry-symbols/<version>/manifest.json` summarize only licensed, retained, non-deleted examples.
+
 ## Required Coverage
 
 Class coverage must match [the taxonomy](laundry-symbol-taxonomy.md), with priority on:
@@ -72,3 +80,5 @@ yolo export model=runs/detect/train/weights/best.pt format=tflite
 ```
 
 Record model size, validation mAP, median inference latency, export checksum, and dataset manifest checksum in `models/laundry-symbol-detector/<version>/manifest.json`.
+
+Detector releases must also create rows in `detector_model_iterations` and `detector_evaluation_runs` so production accuracy can be compared against held-out real-world labels and rolled back if needed.

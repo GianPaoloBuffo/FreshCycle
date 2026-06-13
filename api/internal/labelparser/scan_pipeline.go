@@ -245,6 +245,7 @@ func (c *MemoryScanCache) Stats() ScanCacheStats {
 func cloneScanResult(result ScanLabelResult) ScanLabelResult {
 	result.UncertainFields = append([]string(nil), result.UncertainFields...)
 	result.SymbolDetections = append([]SymbolDetection(nil), result.SymbolDetections...)
+	result.ReviewReasons = append([]string(nil), result.ReviewReasons...)
 	result.RoutingReasons = append([]string(nil), result.RoutingReasons...)
 	return result
 }

@@ -30,7 +30,8 @@ import { AppScreen } from '@/components/AppScreen';
 import { CareLabelScanner } from '@/components/CareLabelScanner';
 import { palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { ScanLabelClientResult } from '@/features/scan-label/types';
+import { recordScanReviewDecision, ScanAccuracyField, ScanFieldCorrection } from '@/features/scan-label/scanCareLabel';
+import { ScanLabelClientResult, ScanLabelResponse } from '@/features/scan-label/types';
 
 type FlowStatus = 'idle' | 'selecting' | 'processing' | 'uploading' | 'saving' | 'ready' | 'saved';
 type GarmentReviewFormValues = {
@@ -274,6 +275,26 @@ export function AddGarmentScreen() {
       const garment = await saveGarment(payload, {
         accessToken: session?.access_token ?? null,
       });
+
+      if (scanResult && parseResult) {
+        try {
+          const reviewDecision = buildScanReviewDecision(scanResult, parseResult, values, garment.id);
+          await recordScanReviewDecision(reviewDecision, {
+            accessToken: session?.access_token ?? null,
+          });
+          logAddGarmentEvent('scan_review_event_recorded', {
+            decision: reviewDecision.decision,
+            correctedFieldCount: reviewDecision.correctedFields.length,
+            scanEventId: scanResult.scan.scanEventId,
+            reviewQueueId: scanResult.scan.reviewQueueId,
+          });
+        } catch (error) {
+          logAddGarmentError('scan_review_event_failed', error, {
+            scanEventId: scanResult.scan.scanEventId,
+            reviewQueueId: scanResult.scan.reviewQueueId,
+          });
+        }
+      }
 
       setPreparedPayload(payload);
       setSavedGarment(garment);
@@ -988,6 +1009,138 @@ function buildPreparedGarmentPayload(
   };
 }
 
+function buildScanReviewDecision(
+  scanResult: ScanLabelClientResult,
+  parseResult: ParsedLabelResult,
+  values: GarmentReviewFormValues,
+  garmentId: string
+): Parameters<typeof recordScanReviewDecision>[0] {
+  const defaults = buildReviewDefaults(parseResult);
+  const predictedFields = buildPredictedAccuracyFields(scanResult.scan);
+  const correctedFields = buildCorrectedAccuracyFields(values);
+  const changedFields = changedAccuracyFields(defaults, values);
+  const confidence = fieldConfidenceForScan(scanResult.scan);
+  const fieldCorrections: ScanFieldCorrection[] = scanAccuracyFields.map((fieldName) => ({
+    fieldName,
+    predictedValue: predictedFields[fieldName],
+    correctedValue: changedFields.includes(fieldName) ? correctedFields[fieldName] : predictedFields[fieldName],
+    errorSource: changedFields.includes(fieldName) ? 'user_override' : 'unknown',
+    confidence: confidence[fieldName] ?? null,
+  }));
+
+  return {
+    scanEventId: scanResult.scan.scanEventId,
+    reviewQueueId: scanResult.scan.reviewQueueId,
+    imageHash: scanResult.scan.imageHash,
+    decision: changedFields.length ? 'correct' : 'accept',
+    correctedFields: changedFields,
+    fieldCorrections,
+    finalUserCorrection: {
+      garmentId,
+      name: values.name.trim(),
+      category: emptyToNull(values.category),
+      primaryColor: emptyToNull(values.primaryColor),
+      washTemperatureC: values.washTemperatureC.trim() ? Number(values.washTemperatureC) : null,
+      careInstructions: values.careInstructionsText
+        .split('\n')
+        .map((value) => value.trim())
+        .filter(Boolean),
+      fabricNotes: values.fabricNotesText
+        .split('\n')
+        .map((value) => value.trim())
+        .filter(Boolean),
+      rawLabelText: values.rawLabelText.trim(),
+      machineWashable: values.machineWashable,
+      tumbleDry: values.tumbleDry,
+      dryCleanOnly: values.dryCleanOnly,
+      ironAllowed: values.ironAllowed,
+      ironTemp: values.ironTemp || null,
+      bleachAllowed: values.bleachAllowed,
+    },
+  };
+}
+
+const scanAccuracyFields: ScanAccuracyField[] = [
+  'wash_temperature',
+  'wash_cycle',
+  'hand_wash',
+  'bleach',
+  'tumble_dry',
+  'natural_drying',
+  'iron',
+  'dry_clean',
+  'wet_clean',
+];
+
+function buildPredictedAccuracyFields(scan: ScanLabelResponse): Record<ScanAccuracyField, string> {
+  const dryingValue = scan.care.drying.value;
+  const cleaningValue = scan.care.professionalCleaning.value;
+
+  return {
+    wash_temperature: scan.care.wash.temperatureC === null ? 'unknown' : String(scan.care.wash.temperatureC),
+    wash_cycle: scan.care.wash.cycle ?? 'unknown',
+    hand_wash: booleanField(scan.care.wash.value === 'hand_wash'),
+    bleach: scan.care.bleach.value,
+    tumble_dry: booleanField(dryingValue === 'tumble_dry' || dryingValue === 'tumble_dry_low'),
+    natural_drying: dryingValue === 'line_dry' || dryingValue === 'dry_flat' ? dryingValue : 'none',
+    iron: scan.care.ironing.value,
+    dry_clean: cleaningValue,
+    wet_clean: cleaningValue.includes('wet_clean') ? cleaningValue : 'unknown',
+  };
+}
+
+function buildCorrectedAccuracyFields(values: GarmentReviewFormValues): Record<ScanAccuracyField, string> {
+  const instructions = values.careInstructionsText.toLowerCase();
+
+  return {
+    wash_temperature: values.washTemperatureC.trim() || 'unknown',
+    wash_cycle: instructions.includes('delicate') || instructions.includes('gentle') ? 'delicate' : 'unknown',
+    hand_wash: booleanField(instructions.includes('hand wash')),
+    bleach: values.bleachAllowed ? 'allowed' : 'do_not_bleach',
+    tumble_dry: booleanField(values.tumbleDry),
+    natural_drying: instructions.includes('dry flat') ? 'dry_flat' : instructions.includes('line dry') ? 'line_dry' : 'none',
+    iron: values.ironAllowed ? values.ironTemp || 'allowed' : 'do_not_iron',
+    dry_clean: values.dryCleanOnly ? 'professional_clean_only' : instructions.includes('dry clean') ? 'dry_clean' : 'unknown',
+    wet_clean: instructions.includes('wet clean') ? 'wet_clean' : 'unknown',
+  };
+}
+
+function changedAccuracyFields(
+  defaults: GarmentReviewFormValues,
+  values: GarmentReviewFormValues
+): ScanAccuracyField[] {
+  const changed = new Set<ScanAccuracyField>();
+
+  if (defaults.washTemperatureC !== values.washTemperatureC) changed.add('wash_temperature');
+  if (defaults.machineWashable !== values.machineWashable) changed.add('wash_cycle');
+  if (defaults.tumbleDry !== values.tumbleDry) changed.add('tumble_dry');
+  if (defaults.dryCleanOnly !== values.dryCleanOnly) changed.add('dry_clean');
+  if (defaults.ironAllowed !== values.ironAllowed || defaults.ironTemp !== values.ironTemp) changed.add('iron');
+  if (defaults.bleachAllowed !== values.bleachAllowed) changed.add('bleach');
+  if (defaults.careInstructionsText !== values.careInstructionsText) {
+    changed.add('wash_cycle');
+    changed.add('hand_wash');
+    changed.add('natural_drying');
+    changed.add('wet_clean');
+  }
+
+  return scanAccuracyFields.filter((field) => changed.has(field));
+}
+
+function fieldConfidenceForScan(scan: ScanLabelResponse): Partial<Record<ScanAccuracyField, number>> {
+  return {
+    wash_temperature: scan.care.wash.confidence,
+    wash_cycle: scan.care.wash.confidence,
+    hand_wash: scan.care.wash.confidence,
+    bleach: scan.care.bleach.confidence,
+    tumble_dry: scan.care.drying.confidence,
+    natural_drying: scan.care.drying.confidence,
+    iron: scan.care.ironing.confidence,
+    dry_clean: scan.care.professionalCleaning.confidence,
+    wet_clean: scan.care.professionalCleaning.confidence,
+  };
+}
+
 function buildInstructionFlags(values: GarmentReviewFormValues) {
   const instructions = [];
 
@@ -1008,6 +1161,10 @@ function buildInstructionFlags(values: GarmentReviewFormValues) {
   }
 
   return instructions;
+}
+
+function booleanField(value: boolean) {
+  return value ? 'true' : 'false';
 }
 
 function valuesFromToggles(values: GarmentReviewFormValues) {

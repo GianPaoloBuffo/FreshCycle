@@ -15,6 +15,7 @@ import (
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/garments"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/scanquality"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/schedules"
 )
 
@@ -47,6 +48,24 @@ type stubScheduleStore struct {
 	last           schedules.CreateInput
 	lastUserID     string
 	lastScheduleID string
+}
+
+type stubScanQualityStore struct {
+	scanResult     scanquality.ScanRecordResult
+	decisionResult scanquality.ReviewDecisionResult
+	lastScan       scanquality.ScanRecordInput
+	lastDecision   scanquality.ReviewDecisionInput
+	err            error
+}
+
+func (s *stubScanQualityStore) RecordScan(_ context.Context, input scanquality.ScanRecordInput) (scanquality.ScanRecordResult, error) {
+	s.lastScan = input
+	return s.scanResult, s.err
+}
+
+func (s *stubScanQualityStore) RecordReviewDecision(_ context.Context, input scanquality.ReviewDecisionInput) (scanquality.ReviewDecisionResult, error) {
+	s.lastDecision = input
+	return s.decisionResult, s.err
 }
 
 func (s *stubScheduleStore) CreateSchedule(_ context.Context, input schedules.CreateInput) (schedules.Schedule, error) {
@@ -154,6 +173,92 @@ func TestScanLabelRoute(t *testing.T) {
 	}
 	if response.UncertainFields == nil {
 		t.Fatal("expected uncertain_fields to be present")
+	}
+}
+
+func TestScanLabelRouteRecordsTelemetry(t *testing.T) {
+	t.Parallel()
+
+	store := &stubScanQualityStore{
+		scanResult: scanquality.ScanRecordResult{
+			ScanEventID:            "29ce43cd-f095-476d-a7cb-1ee7850c14f1",
+			ReviewQueueID:          "50f9b725-df5a-4508-a2fd-34ceb4675ae4",
+			ReviewReasons:          []string{"low_confidence"},
+			ActiveLearningPriority: 0.74,
+		},
+	}
+	request := newMultipartImageRequest(t, "/scan-label", map[string]string{
+		"capture_source":  "camera",
+		"image_scope":     "label_crop",
+		"capture_quality": `{"score":0.62,"hints":[{"issue":"low_ocr_signal"}]}`,
+	})
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouterWithScanQuality(labelparser.NewStubParser(), &stubGarmentStore{}, store, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	if store.lastScan.UserID != "user-123" || store.lastScan.Outcome != scanquality.OutcomeSuccess {
+		t.Fatalf("expected scan telemetry to include authenticated user and success outcome, got %#v", store.lastScan)
+	}
+	if store.lastScan.Request.CaptureSource != "camera" {
+		t.Fatalf("expected capture source to be forwarded, got %#v", store.lastScan.Request)
+	}
+	if store.lastScan.Request.CaptureQualityScore == nil || *store.lastScan.Request.CaptureQualityScore != 0.62 {
+		t.Fatalf("expected capture quality score to be forwarded, got %#v", store.lastScan.Request.CaptureQualityScore)
+	}
+
+	var response labelparser.ScanLabelResult
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode scan-label response: %v", err)
+	}
+
+	if response.ScanEventID != store.scanResult.ScanEventID || response.ReviewQueueID != store.scanResult.ReviewQueueID {
+		t.Fatalf("expected telemetry identifiers in response, got %#v", response)
+	}
+	if len(response.ReviewReasons) != 1 || response.ReviewReasons[0] != "low_confidence" {
+		t.Fatalf("expected review reasons in response, got %#v", response.ReviewReasons)
+	}
+}
+
+func TestScanReviewEventRouteRecordsDecision(t *testing.T) {
+	t.Parallel()
+
+	store := &stubScanQualityStore{
+		decisionResult: scanquality.ReviewDecisionResult{
+			ReviewDecisionID:    "b8261c04-f11a-42c8-9ddb-7afd031c5ba2",
+			ReviewQueueID:       "50f9b725-df5a-4508-a2fd-34ceb4675ae4",
+			AnnotationExampleID: "dd69e3da-b43d-4272-9d95-36d704709029",
+		},
+	}
+	requestBody := bytes.NewBufferString(`{
+		"scan_event_id":"29ce43cd-f095-476d-a7cb-1ee7850c14f1",
+		"review_queue_id":"50f9b725-df5a-4508-a2fd-34ceb4675ae4",
+		"decision":"correct",
+		"corrected_fields":["bleach"],
+		"field_corrections":[{"field_name":"bleach","predicted_value":"allowed","corrected_value":"do_not_bleach","error_source":"user_override","confidence":0.71}],
+		"final_user_correction":{"bleach":"do_not_bleach"}
+	}`)
+	request := httptest.NewRequest(http.MethodPost, "/scan-label/review-events", requestBody)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	httpapi.NewRouterWithScanQuality(labelparser.NewStubParser(), &stubGarmentStore{}, store, testAllowedOrigins, stubAuthValidator{
+		user: auth.User{ID: "user-123"},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusCreated, recorder.Code, recorder.Body.String())
+	}
+	if store.lastDecision.UserID != "user-123" || store.lastDecision.Decision != scanquality.DecisionCorrect {
+		t.Fatalf("expected review decision to be forwarded, got %#v", store.lastDecision)
+	}
+	if len(store.lastDecision.FieldCorrections) != 1 || store.lastDecision.FieldCorrections[0].FieldName != "bleach" {
+		t.Fatalf("expected field correction payload, got %#v", store.lastDecision.FieldCorrections)
 	}
 }
 

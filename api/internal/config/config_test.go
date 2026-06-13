@@ -78,17 +78,25 @@ func TestLoadDefaultsOCRAndGeminiConfig(t *testing.T) {
 	if !cfg.SymbolDetectorEnabled {
 		t.Fatal("expected symbol detector to default enabled")
 	}
+	if !cfg.ScanTelemetryEnabled {
+		t.Fatal("expected scan telemetry to default enabled")
+	}
+	if cfg.ScanTelemetryEnvironment != "production" {
+		t.Fatalf("expected production scan telemetry environment, got %q", cfg.ScanTelemetryEnvironment)
+	}
 }
 
 func TestLoadScanPipelineConfigOverrides(t *testing.T) {
 	t.Parallel()
 
 	cfg, err := config.LoadFromMap(map[string]string{
-		"SUPABASE_DB_URL":         "postgres://example",
-		"SCAN_CACHE_ENABLED":      "false",
-		"SCAN_CACHE_TTL":          "2h",
-		"SCAN_CACHE_MAX_ENTRIES":  "128",
-		"SYMBOL_DETECTOR_ENABLED": "false",
+		"SUPABASE_DB_URL":            "postgres://example",
+		"SCAN_CACHE_ENABLED":         "false",
+		"SCAN_CACHE_TTL":             "2h",
+		"SCAN_CACHE_MAX_ENTRIES":     "128",
+		"SYMBOL_DETECTOR_ENABLED":    "false",
+		"SCAN_TELEMETRY_ENABLED":     "false",
+		"SCAN_TELEMETRY_ENVIRONMENT": "debug",
 	})
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -105,6 +113,26 @@ func TestLoadScanPipelineConfigOverrides(t *testing.T) {
 	}
 	if cfg.SymbolDetectorEnabled {
 		t.Fatal("expected symbol detector override to disable detector")
+	}
+	if cfg.ScanTelemetryEnabled {
+		t.Fatal("expected scan telemetry override to disable telemetry")
+	}
+	if cfg.ScanTelemetryEnvironment != "debug" {
+		t.Fatalf("expected debug scan telemetry environment, got %q", cfg.ScanTelemetryEnvironment)
+	}
+}
+
+func TestValidateRejectsUnsupportedScanTelemetryEnvironment(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Port:                     "8080",
+		DatabaseURL:              "postgres://example",
+		ScanTelemetryEnvironment: "staging",
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid scan telemetry environment to fail validation")
 	}
 }
 

@@ -66,11 +66,17 @@ export type DryingValue =
   | 'dry_flat'
   | 'do_not_tumble_dry';
 export type IroningValue = 'allowed' | 'low' | 'medium' | 'high' | 'do_not_iron';
-export type ProfessionalCleaningValue = 'dry_clean' | 'professional_clean_only' | 'do_not_dry_clean';
+export type ProfessionalCleaningValue =
+  | 'dry_clean'
+  | 'professional_clean_only'
+  | 'do_not_dry_clean'
+  | 'wet_clean'
+  | 'do_not_wet_clean';
 
 export type ScanLabelCareInstructions = {
   wash: ScanField<WashValue> & {
     temperatureC: number | null;
+    cycle: string | null;
   };
   bleach: ScanField<BleachValue>;
   drying: ScanField<DryingValue>;
@@ -92,6 +98,10 @@ export type ScanLabelResponse = {
   route: string | null;
   cacheHit: boolean;
   imageHash: string | null;
+  scanEventId: string | null;
+  reviewQueueId: string | null;
+  reviewReasons: string[];
+  activeLearningPriority: number | null;
   paidFallbackUsed: boolean;
   fallbackCallsAvoided: number;
   routingReasons: string[];

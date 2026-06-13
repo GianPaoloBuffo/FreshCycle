@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freshcycle.local/schemas/laundry-symbol-dataset-manifest.json",
+  "title": "FreshCycle laundry symbol dataset manifest",
+  "type": "object",
+  "required": [
+    "version",
+    "created_at",
+    "sources",
+    "splits",
+    "class_counts",
+    "privacy",
+    "annotation_quality"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "license", "redistribution_allowed", "downloaded_at"],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "license": { "type": "string" },
+          "redistribution_allowed": { "type": "boolean" },
+          "downloaded_at": { "type": "string", "format": "date-time" },
+          "checksum": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "splits": {
+      "type": "object",
+      "required": ["train", "val", "test"],
+      "properties": {
+        "train": { "$ref": "#/$defs/split" },
+        "val": { "$ref": "#/$defs/split" },
+        "test": { "$ref": "#/$defs/split" }
+      },
+      "additionalProperties": false
+    },
+    "class_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["contains_freshcycle_user_examples", "redacted_examples", "privacy_deleted_examples"],
+      "properties": {
+        "contains_freshcycle_user_examples": { "type": "boolean" },
+        "redacted_examples": { "type": "integer", "minimum": 0 },
+        "privacy_deleted_examples": { "type": "integer", "minimum": 0 },
+        "retention_policy": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "annotation_quality": {
+      "type": "object",
+      "required": ["reviewed_examples", "qa_pass_rate", "known_gaps"],
+      "properties": {
+        "reviewed_examples": { "type": "integer", "minimum": 0 },
+        "qa_pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "known_gaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "split": {
+      "type": "object",
+      "required": ["images", "annotations"],
+      "properties": {
+        "images": { "type": "integer", "minimum": 0 },
+        "annotations": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

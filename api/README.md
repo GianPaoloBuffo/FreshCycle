@@ -42,6 +42,8 @@ The API listens on `API_PORT`, defaulting to `8080`.
 - `SCAN_CACHE_ENABLED`: optional, defaults to `true`; caches structured scan interpretations by SHA-256 image hash in API memory
 - `SCAN_CACHE_TTL`: optional Go duration, defaults to `24h`; controls in-memory scan cache retention
 - `SCAN_CACHE_MAX_ENTRIES`: optional, defaults to `512`; caps in-memory scan cache entries
+- `SCAN_TELEMETRY_ENABLED`: optional, defaults to `true`; writes authenticated scan telemetry, review queue, accuracy, and active-learning records
+- `SCAN_TELEMETRY_ENVIRONMENT`: optional, defaults to `production`; supported values are `production`, `debug`, and `test`
 - `OPENAI_API_KEY`: required when `LABEL_PARSER_PROVIDER=openai`
 - `OPENAI_MODEL`: optional, defaults to `gpt-4.1-mini`
 - `OPENAI_BASE_URL`: optional override for the Responses API URL
@@ -99,10 +101,24 @@ The Docker deployment installs Tesseract plus English and Spanish language packs
 
 Responses include field-level `confidence`, `explanation`, and `needs_confirmation`, plus `symbol_detections`, `provider`, `route`, `cache_hit`, `image_hash`, `paid_fallback_used`, `fallback_calls_avoided`, and `routing_reasons`.
 
+When telemetry is enabled, responses also include `scan_event_id`, optional `review_queue_id`, `review_reasons`, and `active_learning_priority`. The app sends a follow-up `POST /scan-label/review-events` after the user saves the review form so accepted and corrected fields can feed per-field accuracy and active-learning records.
+
 The cache stores only the image hash and structured interpretation metadata; it does not retain the uploaded image bytes.
+
+## Scan quality loop
+
+`POST /scan-label/review-events` expects:
+
+- `Authorization: Bearer <supabase-access-token>`
+- JSON with `scan_event_id` or `review_queue_id`
+- `decision`: `accept`, `correct`, `needs_label`, `discard`, or `privacy_delete`
+- optional `corrected_fields`, `field_corrections`, and `final_user_correction`
+
+The database migration `20260613184616_gp53_scan_accuracy_loop.sql` adds retention policies, scan events, review queue records, annotation examples, model iteration/evaluation tables, per-field accuracy events, and active-learning candidates. Production policy records cropped-label references and hashes, not full-photo storage.
 
 See:
 
 - `docs/laundry-symbol-taxonomy.md`
 - `docs/laundry-symbol-dataset.md`
+- `docs/production-ocr-accuracy-loop.md`
 - `models/laundry-symbol-detector/v0.1.0/manifest.json`

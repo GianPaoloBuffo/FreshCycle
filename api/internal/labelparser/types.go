@@ -108,24 +108,28 @@ type ProfessionalCleaningInstruction struct {
 }
 
 type ScanLabelResult struct {
-	Wash                  WashInstruction                 `json:"wash"`
-	Bleach                BleachInstruction               `json:"bleach"`
-	Drying                DryingInstruction               `json:"drying"`
-	Ironing               IroningInstruction              `json:"ironing"`
-	ProfessionalCleaning  ProfessionalCleaningInstruction `json:"professional_cleaning"`
-	RawText               string                          `json:"raw_text"`
-	Confidence            float64                         `json:"confidence"`
-	Explanation           string                          `json:"explanation"`
-	UncertainFields       []string                        `json:"uncertain_fields"`
-	NeedsUserConfirmation bool                            `json:"needs_user_confirmation"`
-	SymbolDetections      []SymbolDetection               `json:"symbol_detections"`
-	Provider              string                          `json:"provider,omitempty"`
-	Route                 string                          `json:"route,omitempty"`
-	CacheHit              bool                            `json:"cache_hit"`
-	ImageHash             string                          `json:"image_hash,omitempty"`
-	PaidFallbackUsed      bool                            `json:"paid_fallback_used"`
-	FallbackCallsAvoided  int                             `json:"fallback_calls_avoided,omitempty"`
-	RoutingReasons        []string                        `json:"routing_reasons"`
+	Wash                   WashInstruction                 `json:"wash"`
+	Bleach                 BleachInstruction               `json:"bleach"`
+	Drying                 DryingInstruction               `json:"drying"`
+	Ironing                IroningInstruction              `json:"ironing"`
+	ProfessionalCleaning   ProfessionalCleaningInstruction `json:"professional_cleaning"`
+	RawText                string                          `json:"raw_text"`
+	Confidence             float64                         `json:"confidence"`
+	Explanation            string                          `json:"explanation"`
+	UncertainFields        []string                        `json:"uncertain_fields"`
+	NeedsUserConfirmation  bool                            `json:"needs_user_confirmation"`
+	SymbolDetections       []SymbolDetection               `json:"symbol_detections"`
+	Provider               string                          `json:"provider,omitempty"`
+	Route                  string                          `json:"route,omitempty"`
+	CacheHit               bool                            `json:"cache_hit"`
+	ImageHash              string                          `json:"image_hash,omitempty"`
+	ScanEventID            string                          `json:"scan_event_id,omitempty"`
+	ReviewQueueID          string                          `json:"review_queue_id,omitempty"`
+	ReviewReasons          []string                        `json:"review_reasons,omitempty"`
+	ActiveLearningPriority float64                         `json:"active_learning_priority,omitempty"`
+	PaidFallbackUsed       bool                            `json:"paid_fallback_used"`
+	FallbackCallsAvoided   int                             `json:"fallback_calls_avoided,omitempty"`
+	RoutingReasons         []string                        `json:"routing_reasons"`
 }
 
 type Scanner interface {

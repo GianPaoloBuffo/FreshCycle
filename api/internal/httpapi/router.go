@@ -9,12 +9,17 @@ import (
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi/handlers"
 	httpmiddleware "github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi/middleware"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/scanquality"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/schedules"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 func NewRouter(parser labelparser.Parser, garmentStore garments.Store, allowedOrigins []string, validator auth.Validator, scheduleStores ...schedules.Store) http.Handler {
+	return NewRouterWithScanQuality(parser, garmentStore, nil, allowedOrigins, validator, scheduleStores...)
+}
+
+func NewRouterWithScanQuality(parser labelparser.Parser, garmentStore garments.Store, scanQualityStore scanquality.Store, allowedOrigins []string, validator auth.Validator, scheduleStores ...schedules.Store) http.Handler {
 	router := chi.NewRouter()
 	var scheduleStore schedules.Store
 	if len(scheduleStores) > 0 {
@@ -32,7 +37,8 @@ func NewRouter(parser labelparser.Parser, garmentStore garments.Store, allowedOr
 
 	router.Get("/health", handlers.Health)
 	router.With(httpmiddleware.RequireAuth(validator)).Post("/garments/parse-label", handlers.ParseLabel(parser))
-	router.With(httpmiddleware.RequireAuth(validator)).Post("/scan-label", handlers.ScanLabel(parser))
+	router.With(httpmiddleware.RequireAuth(validator)).Post("/scan-label", handlers.ScanLabel(parser, scanQualityStore))
+	router.With(httpmiddleware.RequireAuth(validator)).Post("/scan-label/review-events", handlers.ScanReviewEvent(scanQualityStore))
 	router.With(httpmiddleware.RequireAuth(validator)).Get("/garments", handlers.ListGarments(garmentStore))
 	router.With(httpmiddleware.RequireAuth(validator)).Get("/garments/{garmentID}", handlers.GetGarment(garmentStore))
 	router.With(httpmiddleware.RequireAuth(validator)).Post("/garments", handlers.CreateGarment(garmentStore))

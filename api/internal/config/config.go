@@ -18,6 +18,7 @@ const defaultGeminiModel = "gemini-3.1-flash-lite"
 const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
 const defaultScanCacheTTL = 24 * time.Hour
 const defaultScanCacheMaxEntries = 512
+const defaultScanTelemetryEnvironment = "production"
 
 type Config struct {
 	Port                        string
@@ -36,6 +37,8 @@ type Config struct {
 	ScanCacheTTL                time.Duration
 	ScanCacheMaxEntries         int
 	SymbolDetectorEnabled       bool
+	ScanTelemetryEnabled        bool
+	ScanTelemetryEnvironment    string
 	AllowedOrigins              []string
 	SupabaseProjectURL          string
 	SupabaseSecretKey           string
@@ -73,6 +76,8 @@ func LoadFromMap(values map[string]string) (Config, error) {
 		ScanCacheTTL:                getDurationEnvFromLookup(lookup, "SCAN_CACHE_TTL", defaultScanCacheTTL),
 		ScanCacheMaxEntries:         getIntEnvFromLookup(lookup, "SCAN_CACHE_MAX_ENTRIES", defaultScanCacheMaxEntries),
 		SymbolDetectorEnabled:       getBoolEnvFromLookup(lookup, "SYMBOL_DETECTOR_ENABLED", true),
+		ScanTelemetryEnabled:        getBoolEnvFromLookup(lookup, "SCAN_TELEMETRY_ENABLED", true),
+		ScanTelemetryEnvironment:    getEnvFromLookup(lookup, "SCAN_TELEMETRY_ENVIRONMENT", defaultScanTelemetryEnvironment),
 		AllowedOrigins:              splitCSVEnv(getEnvFromLookup(lookup, "API_ALLOWED_ORIGINS", defaultAllowedOrigins)),
 		SupabaseProjectURL:          getEnvFromLookup(lookup, "SUPABASE_URL", ""),
 		SupabaseSecretKey:           getEnvFromLookup(lookup, "SUPABASE_SECRET_KEY", ""),
@@ -113,6 +118,16 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.GeminiAPIKey) == "" {
 			return errors.New("GEMINI_API_KEY is required when LABEL_PARSER_PROVIDER=hybrid")
 		}
+	}
+
+	telemetryEnvironment := strings.ToLower(strings.TrimSpace(c.ScanTelemetryEnvironment))
+	if telemetryEnvironment == "" {
+		telemetryEnvironment = defaultScanTelemetryEnvironment
+	}
+	switch telemetryEnvironment {
+	case "production", "debug", "test":
+	default:
+		return errors.New("SCAN_TELEMETRY_ENVIRONMENT must be production, debug, or test")
 	}
 
 	return nil

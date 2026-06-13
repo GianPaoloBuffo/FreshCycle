@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freshcycle.local/schemas/laundry-symbol-detector-manifest.json",
+  "title": "FreshCycle laundry symbol detector manifest",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "artifact_type",
+    "status",
+    "dataset",
+    "privacy",
+    "export_targets",
+    "classes",
+    "metrics",
+    "promotion"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "version": { "type": "string" },
+    "artifact_type": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "training", "evaluating", "integrated", "promoted", "rejected", "rolled_back"]
+    },
+    "dataset": {
+      "type": "object",
+      "required": ["version", "manifest_path", "heldout_name"],
+      "properties": {
+        "version": { "type": "string" },
+        "manifest_path": { "type": "string" },
+        "manifest_checksum": { "type": ["string", "null"] },
+        "heldout_name": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["stores_source_images", "stores_image_hash_only", "retention"],
+      "properties": {
+        "stores_source_images": { "type": "boolean" },
+        "stores_image_hash_only": { "type": "boolean" },
+        "retention": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "export_targets": {
+      "type": "object",
+      "required": ["planned"],
+      "properties": {
+        "current": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "planned": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "classes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["validation_images", "map50", "false_positives", "false_negatives", "median_latency_ms", "model_size_bytes"],
+      "properties": {
+        "validation_images": { "type": "integer", "minimum": 0 },
+        "map50": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "field_accuracy": {
+          "type": "object",
+          "additionalProperties": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+        },
+        "false_positives": { "type": ["integer", "null"], "minimum": 0 },
+        "false_negatives": { "type": ["integer", "null"], "minimum": 0 },
+        "median_latency_ms": { "type": ["number", "null"], "minimum": 0 },
+        "model_size_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "promotion": {
+      "type": "object",
+      "required": ["eligible", "reason"],
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "promoted_at": { "type": ["string", "null"], "format": "date-time" },
+        "rollback_version": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

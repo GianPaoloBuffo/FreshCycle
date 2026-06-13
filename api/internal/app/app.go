@@ -10,6 +10,7 @@ import (
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/httpapi"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/labelparser"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/postgres"
+	"github.com/GianPaoloBuffo/FreshCycle/api/internal/scanquality"
 	"github.com/GianPaoloBuffo/FreshCycle/api/internal/schedules"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,7 +36,11 @@ func New(cfg config.Config) (*App, error) {
 	validator := auth.NewValidator(cfg)
 	garmentStore := garments.NewPostgresStore(db)
 	scheduleStore := schedules.NewPostgresStore(db)
-	router := httpapi.NewRouter(parser, garmentStore, cfg.AllowedOrigins, validator, scheduleStore)
+	var scanQualityStore scanquality.Store
+	if cfg.ScanTelemetryEnabled {
+		scanQualityStore = scanquality.NewPostgresStore(db, cfg.ScanTelemetryEnvironment)
+	}
+	router := httpapi.NewRouterWithScanQuality(parser, garmentStore, scanQualityStore, cfg.AllowedOrigins, validator, scheduleStore)
 
 	return &App{
 		config: cfg,

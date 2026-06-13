@@ -98,6 +98,10 @@ describe('normalizeScanLabelResponse', () => {
       route: 'local_rules',
       cache_hit: true,
       image_hash: 'abc123',
+      scan_event_id: 'scan-event-123',
+      review_queue_id: 'review-queue-123',
+      review_reasons: ['low_confidence'],
+      active_learning_priority: 0.74,
       paid_fallback_used: false,
       fallback_calls_avoided: 1,
       routing_reasons: ['image_hash_cache_hit'],
@@ -133,6 +137,10 @@ describe('normalizeScanLabelResponse', () => {
     expect(scan.route).toBe('local_rules');
     expect(scan.cacheHit).toBe(true);
     expect(scan.imageHash).toBe('abc123');
+    expect(scan.scanEventId).toBe('scan-event-123');
+    expect(scan.reviewQueueId).toBe('review-queue-123');
+    expect(scan.reviewReasons).toEqual(['low_confidence']);
+    expect(scan.activeLearningPriority).toBe(0.74);
     expect(scan.fallbackCallsAvoided).toBe(1);
     expect(scan.routingReasons).toContain('image_hash_cache_hit');
     expect(scan.care.wash.confidence).toBe(0.91);
