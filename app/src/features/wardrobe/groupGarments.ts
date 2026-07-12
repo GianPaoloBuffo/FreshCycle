@@ -102,12 +102,12 @@ function normalizeCategory(category: string | null) {
 function inferCareMethod(careInstructions: string[]) {
   const combined = careInstructions.join(' ');
 
-  if (combined.includes('dry clean')) {
-    return 'dry_clean' as const;
-  }
-
   if (combined.includes('hand wash')) {
     return 'hand_wash' as const;
+  }
+
+  if (combined.includes('dry clean only') || combined.includes('professional clean only')) {
+    return 'dry_clean' as const;
   }
 
   return 'machine_wash' as const;

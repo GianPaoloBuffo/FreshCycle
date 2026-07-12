@@ -32,7 +32,7 @@ func parseCareLabelText(text string) (ParseLabelResult, careRuleEvidence) {
 
 	negativeTumble := containsAny(normalized, "do not tumble dry", "dont tumble dry", "no tumble dry", "avoid tumble dry", "avoid tumble drying", "dry flat", "line dry", "lay flat", "no usar secadora") ||
 		containsAny(compact, "donottumbledry", "donttumbledry", "notumbledry", "dryflat", "linedry", "layflat")
-	positiveTumble := containsAny(normalized, "tumble dry", "secadora")
+	positiveTumble := containsTumbleDrySignal(normalized, compact)
 	tumbleDry := positiveTumble && !negativeTumble
 
 	negativeBleach := containsAny(normalized, "do not bleach", "dont bleach", "no bleach", "no usar lejia", "no usar blanqueador", "no blanquear") ||
@@ -98,6 +98,14 @@ func containsAny(value string, needles ...string) bool {
 		}
 	}
 	return false
+}
+
+var tumbleDryWithOCRNoisePattern = regexp.MustCompile(`\btumble(?:\s+\S+){0,5}\s+dry\b`)
+
+func containsTumbleDrySignal(normalized string, compact string) bool {
+	return containsAny(normalized, "tumble dry", "secadora") ||
+		containsAny(compact, "tumbledry") ||
+		tumbleDryWithOCRNoisePattern.MatchString(normalized)
 }
 
 func compactForRules(value string) string {
@@ -198,16 +206,17 @@ func containsIronSignal(normalized string, compact string) bool {
 
 func inferIronTemperature(normalized string, compact string) *string {
 	switch {
-	case containsAny(normalized, "cool iron", "low iron", "iron low", "low heat", "planchar a baja", "baja temperatura") ||
-		containsAny(compact, "cooliron", "lowiron", "ironlow", "lowheat", "lonheat", "l0wheat"):
+	case containsAny(normalized, "cool iron", "low iron", "iron low", "planchar a baja", "baja temperatura") ||
+		containsAny(compact, "cooliron", "lowiron", "ironlow") ||
+		regexp.MustCompile(`\b(?:i\s*)?r[0o]n\s+l[0o][nw]\s+heat\b`).MatchString(normalized):
 		value := "low"
 		return &value
-	case containsAny(normalized, "warm iron", "medium iron", "iron medium", "medium heat", "planchar a media", "temperatura media") ||
-		containsAny(compact, "warmiron", "mediumiron", "ironmedium", "mediumheat"):
+	case containsAny(normalized, "warm iron", "medium iron", "iron medium", "planchar a media", "temperatura media") ||
+		containsAny(compact, "warmiron", "mediumiron", "ironmedium"):
 		value := "medium"
 		return &value
-	case containsAny(normalized, "hot iron", "high iron", "iron high", "high heat", "planchar a alta", "alta temperatura") ||
-		containsAny(compact, "hotiron", "highiron", "ironhigh", "highheat"):
+	case containsAny(normalized, "hot iron", "high iron", "iron high", "planchar a alta", "alta temperatura") ||
+		containsAny(compact, "hotiron", "highiron", "ironhigh"):
 		value := "high"
 		return &value
 	default:

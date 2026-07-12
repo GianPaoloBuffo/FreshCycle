@@ -22,6 +22,7 @@ import {
   describeAddGarmentError,
   parseCareLabelPhoto,
 } from '@/features/add-garment/parseCareLabel';
+import { mergeCareInstructions } from '@/features/add-garment/mergeCareInstructions';
 import { saveGarment, SavedGarment } from '@/features/add-garment/saveGarment';
 import { createSignedLabelImageUrl, uploadLabelImage } from '@/features/add-garment/uploadLabelImage';
 import { logAddGarmentError, logAddGarmentEvent } from '@/features/add-garment/observability';
@@ -990,13 +991,7 @@ function buildPreparedGarmentPayload(
   values: GarmentReviewFormValues,
   uploadedLabel: { garmentId: string; objectPath: string }
 ): PreparedGarmentPayload {
-  const careInstructions = [
-    ...values.careInstructionsText
-      .split('\n')
-      .map((value) => value.trim())
-      .filter(Boolean),
-    ...buildInstructionFlags(values),
-  ];
+  const careInstructions = mergeCareInstructions(values.careInstructionsText.split('\n'), values);
 
   return {
     id: uploadedLabel.garmentId,
@@ -1004,7 +999,7 @@ function buildPreparedGarmentPayload(
     category: emptyToNull(values.category),
     primary_color: emptyToNull(values.primaryColor),
     wash_temperature_c: values.washTemperatureC.trim() ? Number(values.washTemperatureC) : null,
-    care_instructions: Array.from(new Set(careInstructions)),
+    care_instructions: careInstructions,
     label_image_path: uploadedLabel.objectPath,
   };
 }
@@ -1139,28 +1134,6 @@ function fieldConfidenceForScan(scan: ScanLabelResponse): Partial<Record<ScanAcc
     dry_clean: scan.care.professionalCleaning.confidence,
     wet_clean: scan.care.professionalCleaning.confidence,
   };
-}
-
-function buildInstructionFlags(values: GarmentReviewFormValues) {
-  const instructions = [];
-
-  if (values.machineWashable) {
-    instructions.push('Machine washable');
-  }
-  if (values.tumbleDry) {
-    instructions.push('Tumble dry allowed');
-  }
-  if (values.dryCleanOnly) {
-    instructions.push('Dry clean only');
-  }
-  if (values.ironAllowed) {
-    instructions.push(values.ironTemp ? `Iron on ${values.ironTemp} heat` : 'Iron allowed');
-  }
-  if (!values.bleachAllowed) {
-    instructions.push('Do not bleach');
-  }
-
-  return instructions;
 }
 
 function booleanField(value: boolean) {

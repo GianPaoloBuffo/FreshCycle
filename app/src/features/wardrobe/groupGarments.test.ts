@@ -45,6 +45,33 @@ describe('normalizeWardrobeGarment', () => {
     expect(result.colour_group).toBe('colour');
     expect(result.machine_temp_bucket).toBe('unknown');
   });
+
+  it('does not treat a dry-clean prohibition as dry-clean-only care', () => {
+    const result = normalizeWardrobeGarment({
+      ...garments[0]!,
+      care_instructions: ['Machine wash up to 30C', 'Do not dry clean'],
+    });
+
+    expect(result.care_method).toBe('machine_wash');
+  });
+
+  it('recognizes the scanner wording for professional-clean-only garments', () => {
+    const result = normalizeWardrobeGarment({
+      ...garments[2]!,
+      care_instructions: ['Do not wash', 'Professional clean only'],
+    });
+
+    expect(result.care_method).toBe('dry_clean');
+  });
+
+  it('keeps hand-wash garments separate even when dry cleaning is also allowed', () => {
+    const result = normalizeWardrobeGarment({
+      ...garments[2]!,
+      care_instructions: ['Hand wash', 'Dry clean allowed'],
+    });
+
+    expect(result.care_method).toBe('hand_wash');
+  });
 });
 
 describe('groupGarments', () => {

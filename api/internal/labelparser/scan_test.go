@@ -190,6 +190,15 @@ func TestNormalizeScanLabelResultFillsMissingProviderMetadata(t *testing.T) {
 	}
 }
 
+func TestInferDryingTemperatureHandlesOCRNoiseAfterTumbleDry(t *testing.T) {
+	normalized := normalizeForRules("TUMBLE DRY 5 É LOW")
+	temperature := inferDryingTemperature(normalized, compactForRules(normalized))
+
+	if temperature == nil || *temperature != "low" {
+		t.Fatalf("expected noisy tumble-dry text to infer low heat, got %#v", temperature)
+	}
+}
+
 func floatPtr(value float64) *float64 {
 	return &value
 }

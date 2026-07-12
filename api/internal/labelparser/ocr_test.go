@@ -1,9 +1,11 @@
 package labelparser
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
+	"image"
+	"image/png"
 	"os/exec"
 	"testing"
 )
@@ -123,16 +125,20 @@ func TestTesseractRunnerIntegrationSkipsWhenUnavailable(t *testing.T) {
 		t.Skip("tesseract is not installed")
 	}
 
-	pngBytes, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
-	if err != nil {
-		t.Fatalf("decode png fixture: %v", err)
+	fixture := image.NewGray(image.Rect(0, 0, 8, 8))
+	for index := range fixture.Pix {
+		fixture.Pix[index] = 0xff
+	}
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, fixture); err != nil {
+		t.Fatalf("encode png fixture: %v", err)
 	}
 
 	runner := NewTesseractRunner("tesseract", "eng")
-	_, err = runner.RunTSV(context.Background(), ParseLabelInput{
+	_, err := runner.RunTSV(context.Background(), ParseLabelInput{
 		Filename: "blank.png",
 		MIMEType: "image/png",
-		Content:  pngBytes,
+		Content:  encoded.Bytes(),
 	}, ocrPSMBlock)
 	if err != nil {
 		t.Fatalf("run tesseract: %v", err)

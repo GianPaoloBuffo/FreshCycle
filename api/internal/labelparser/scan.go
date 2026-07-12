@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -468,7 +469,7 @@ func inferScanDryingStatus(result ParseLabelResult, evidence careRuleEvidence, n
 	temperature := inferDryingTemperature(normalized, compact)
 	negativeTumble := containsAny(normalized, "do not tumble dry", "dont tumble dry", "no tumble dry", "no usar secadora") ||
 		containsAny(compact, "donottumbledry", "donttumbledry", "notumbledry")
-	positiveTumble := containsAny(normalized, "tumble dry", "secadora")
+	positiveTumble := containsTumbleDrySignal(normalized, compact)
 
 	switch {
 	case containsAny(normalized, "dry flat", "lay flat") || containsAny(compact, "dryflat", "layflat"):
@@ -488,15 +489,23 @@ func inferScanDryingStatus(result ParseLabelResult, evidence careRuleEvidence, n
 
 func inferDryingTemperature(normalized string, compact string) *string {
 	switch {
-	case containsAny(normalized, "tumble dry low", "low heat", "low temperature") || containsAny(compact, "tumbledrylow", "lowheat"):
+	case containsAny(normalized, "tumble dry low", "low heat", "low temperature") || containsAny(compact, "tumbledrylow", "lowheat") ||
+		containsTumbleDryTemperature(normalized, "low"):
 		return stringPtr("low")
-	case containsAny(normalized, "tumble dry medium", "medium heat", "medium temperature") || containsAny(compact, "tumbledrymedium", "mediumheat"):
+	case containsAny(normalized, "tumble dry medium", "medium heat", "medium temperature") || containsAny(compact, "tumbledrymedium", "mediumheat") ||
+		containsTumbleDryTemperature(normalized, "medium"):
 		return stringPtr("medium")
-	case containsAny(normalized, "tumble dry high", "high heat", "high temperature") || containsAny(compact, "tumbledryhigh", "highheat"):
+	case containsAny(normalized, "tumble dry high", "high heat", "high temperature") || containsAny(compact, "tumbledryhigh", "highheat") ||
+		containsTumbleDryTemperature(normalized, "high"):
 		return stringPtr("high")
 	default:
 		return nil
 	}
+}
+
+func containsTumbleDryTemperature(normalized string, temperature string) bool {
+	pattern := regexp.MustCompile(`\btumble(?:\s+\S+){0,5}\s+dry(?:\s+\S+){0,4}\s+` + regexp.QuoteMeta(temperature) + `\b`)
+	return pattern.MatchString(normalized)
 }
 
 func inferScanIroningStatus(result ParseLabelResult, evidence careRuleEvidence, normalized string, compact string) string {

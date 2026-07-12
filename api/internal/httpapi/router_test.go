@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"strings"
 	"testing"
 	"time"
 
@@ -358,6 +359,10 @@ func TestParseLabelRouteSetsCORSHeadersForVercelPreviewOrigins(t *testing.T) {
 
 	if origin := recorder.Header().Get("Access-Control-Allow-Origin"); origin != "https://app-oqzl4uwro-gpbuffo-5604s-projects.vercel.app" {
 		t.Fatalf("expected reflected origin header, got %q", origin)
+	}
+
+	if methods := recorder.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(methods, http.MethodDelete) {
+		t.Fatalf("expected DELETE in allowed methods, got %q", methods)
 	}
 }
 

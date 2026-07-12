@@ -120,3 +120,22 @@ func TestParseCareLabelTextDoesNotTreatTumbleDryLowHeatAsIron(t *testing.T) {
 		t.Fatalf("did not expect tumble-dry low heat to imply iron, got allowed=%v temp=%#v", result.IronAllowed, result.IronTemp)
 	}
 }
+
+func TestParseCareLabelTextKeepsDryerHeatSeparateFromWarmIron(t *testing.T) {
+	result, _ := parseCareLabelText("Machine wash cold. Tumble dry low heat. Warm iron if needed.")
+
+	if !result.TumbleDry {
+		t.Fatal("expected tumble dry to be allowed")
+	}
+	if !result.IronAllowed || result.IronTemp == nil || *result.IronTemp != "medium" {
+		t.Fatalf("expected warm iron to win over dryer low heat, got allowed=%v temp=%#v", result.IronAllowed, result.IronTemp)
+	}
+}
+
+func TestParseCareLabelTextHandlesOCRNoiseInsideTumbleDryPhrase(t *testing.T) {
+	result, evidence := parseCareLabelText("Non-chlorine bleach only if desired, Tumble Ms. dry low heat. Warm iron if needed.")
+
+	if !result.TumbleDry || !evidence.HasDrySignal {
+		t.Fatalf("expected noisy tumble-dry phrase to be recognized, got result=%#v evidence=%#v", result, evidence)
+	}
+}
